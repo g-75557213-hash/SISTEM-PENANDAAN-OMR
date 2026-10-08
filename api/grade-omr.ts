@@ -206,59 +206,100 @@ FORMAT RESPON (JSON SAHAJA):
 }
 `;
 
-    const apiKey = process.env.GEMINI_API_KEY;
+// Helper to retrieve and support multiple Gemini API keys (single, comma-separated, or numbered GEMINI_API_KEY_2, etc.)
+function getAvailableGeminiApiKeys(): string[] {
+  const keys: string[] = [];
 
-    if (apiKey) {
-      try {
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
+  // 1. From GEMINI_API_KEYS (comma or semicolon separated)
+  if (process.env.GEMINI_API_KEYS) {
+    keys.push(...process.env.GEMINI_API_KEYS.split(/[,;\n\r]+/).map((k) => k.trim()).filter(Boolean));
+  }
+
+  // 2. From GEMINI_API_KEY (can be single or comma-separated: key1,key2,key3)
+  if (process.env.GEMINI_API_KEY) {
+    keys.push(...process.env.GEMINI_API_KEY.split(/[,;\n\r]+/).map((k) => k.trim()).filter(Boolean));
+  }
+
+  // 3. From numbered keys (GEMINI_API_KEY_1, GEMINI_API_KEY_2, ..., GEMINI_API_KEY_10)
+  for (let i = 1; i <= 10; i++) {
+    const key = process.env[`GEMINI_API_KEY_${i}`];
+    if (key && key.trim()) {
+      keys.push(key.trim());
+    }
+  }
+
+  // Return unique keys preserving order
+  return Array.from(new Set(keys));
+}
+
+    const apiKeys = getAvailableGeminiApiKeys();
+
+    if (apiKeys.length > 0) {
+      // Distribute load across available keys starting from a random index (round-robin / shuffle)
+      const startIndex = Math.floor(Math.random() * apiKeys.length);
+      const orderedKeys = [...apiKeys.slice(startIndex), ...apiKeys.slice(0, startIndex)];
+
+      let successfulResult = null;
+      let lastError: any = null;
+
+      for (const currentKey of orderedKeys) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: currentKey,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              },
             },
-          },
-        });
+          });
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: cleanBase64,
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: cleanBase64,
+                  },
                 },
-              },
-              {
-                text: promptText,
-              },
-            ],
-          },
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-          },
-        });
+                {
+                  text: promptText,
+                },
+              ],
+            },
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          });
 
-        const rawText = response.text?.trim() || '';
-        const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, rawText];
-        const jsonString = jsonMatch[1] || rawText;
-        const parsedResult = JSON.parse(jsonString);
-
-        return res.status(200).json({ success: true, data: parsedResult });
-      } catch (geminiError: any) {
-        console.error('Gemini vision analysis error, falling back to smart engine:', geminiError?.message || geminiError);
-        const fallbackResult = generateIntelligentOMRFallback(
-          answerKey,
-          totalQuestions,
-          passingPercentage
-        );
-        return res.status(200).json({
-          success: true,
-          data: fallbackResult,
-          catatan_teknikal: 'Diproses menggunakan mod toleransi tinggi pintar (Auto-Enhanced OMR Parser)',
-        });
+          const rawText = response.text?.trim() || '';
+          const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, rawText];
+          const jsonString = jsonMatch[1] || rawText;
+          successfulResult = JSON.parse(jsonString);
+          break; // Key succeeded!
+        } catch (geminiError: any) {
+          lastError = geminiError;
+          console.warn(`[Gemini Failover] Kunci API (...${currentKey.slice(-4)}) mengalami ralat atau limit kuota: ${geminiError?.message || geminiError}. Beralih ke kunci seterusnya...`);
+        }
       }
+
+      if (successfulResult) {
+        return res.status(200).json({ success: true, data: successfulResult });
+      }
+
+      console.error('Semua kunci Gemini API gagal atau mencapai had kuota, beralih ke enjin pintar:', lastError?.message || lastError);
+      const fallbackResult = generateIntelligentOMRFallback(
+        answerKey,
+        totalQuestions,
+        passingPercentage
+      );
+      return res.status(200).json({
+        success: true,
+        data: fallbackResult,
+        catatan_teknikal: 'Diproses menggunakan mod toleransi tinggi pintar (Auto-Enhanced OMR Parser)',
+      });
     } else {
       const fallbackResult = generateIntelligentOMRFallback(
         answerKey,

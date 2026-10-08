@@ -30,14 +30,29 @@ Sistem **Penanda OMR Pintar AI** ini telah dikonfigurasi sepenuhnya untuk pelanc
 2. Klik butang **"Add New..."** ➔ **"Project"**.
 3. Pilih repositori `penanda-omr-pintar` yang baru anda cipta dan klik **"Import"**.
 
-### Langkah 3: Tetapkan Environment Variables (Kunci API)
+### Langkah 3: Tetapkan Environment Variables (Kunci API Gemini)
 1. Di bahagian **Configure Project**:
    * **Framework Preset**: Vercel akan mengesan secara automatik sebagai **Vite**.
    * **Root Directory**: Biarkan `./` (default).
 2. Kembangkan bahagian **"Environment Variables"**:
-   * Nama (**Key**): `GEMINI_API_KEY`
-   * Nilai (**Value**): Masukkan kunci API Google Gemini anda (Boleh didapati percuma dari [Google AI Studio](https://aistudio.google.com/app/apikey)).
-3. Klik **"Add"**.
+   > ⚠️ **PENTING**: Di Vercel, anda **tidak boleh** menaip nama `GEMINI_API_KEY` berulang kali secara berasingan kerana Vercel akan menimpa (overwrite) kunci sebelumnya.
+
+   Pilih salah satu daripada **2 Kaedah Mudah** berikut yang disokong automatik oleh sistem:
+
+   * **Kaedah A (Paling Mudah - Gabung dengan Koma)**:
+     * **Key**: `GEMINI_API_KEY`
+     * **Value**: Masukkan semua key anda dipisahkan dengan tanda koma `,`:
+       `AIzaSyContohKey1...,AIzaSyContohKey2...,AIzaSyContohKey3...`
+     * Klik butang **"Add"**.
+
+   * **Kaedah B (Gunakan Nombor Berturutan)**:
+     * Kunci 1: Key = `GEMINI_API_KEY`, Value = `AIzaSyKeyPertama...` ➔ Klik **Add**
+     * Kunci 2: Key = `GEMINI_API_KEY_2`, Value = `AIzaSyKeyKedua...` ➔ Klik **Add**
+     * Kunci 3: Key = `GEMINI_API_KEY_3`, Value = `AIzaSyKeyKetiga...` ➔ Klik **Add**
+
+   *(Sistem telah dilengkapi dengan teknologi **Auto-Rotation & Failover**: jika satu key kehabisan had kuota/rate limit harian, sistem secara automatik beralih ke key seterusnya tanpa ralat!)*
+
+3. Selesai menambah kunci API.
 
 ### Langkah 4: Klik Deploy!
 1. Tekan butang **"Deploy"**.
