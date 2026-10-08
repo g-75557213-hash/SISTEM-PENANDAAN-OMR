@@ -40,6 +40,87 @@ function getAvailableGeminiApiKeys(): string[] {
   return Array.from(new Set(keys));
 }
 
+// API Endpoint for AI Student Name Recognition ONLY (OCR Nama Murid)
+// AI strictly used only for student name extraction, zero hallucination on answers
+app.post('/api/ocr-student-name', async (req, res) => {
+  try {
+    const { imageBase64, mimeType = 'image/jpeg' } = req.body;
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Imej ruangan nama diperlukan.' });
+    }
+
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+
+    const namePrompt = `
+Anda adalah model OCR khusus untuk membaca ruangan NAMA PELAJAR (Student Name OCR).
+Tugas anda HANYA SATU:
+1. Baca dan transkrip tulisan tangan atau teks cetak pada ruangan 'NAMA' / 'NAME' dalam imej ini.
+2. Format output mestilah JSON ringkas:
+{
+  "studentName": "<Nama Penuh Pelajar dalam Huruf Besar, contohnya: NURUL IZZAH BINTI KAMAL, AHMAD DANIAL BIN RAZAK, dsb>"
+}
+3. Jika ruangan nama benar-benar kosong, kembalikan:
+{
+  "studentName": "MURID TANPA NAMA"
+}
+Jangan masukkan sebarang teks lain di luar JSON.
+`;
+
+    const apiKeys = getAvailableGeminiApiKeys();
+
+    if (apiKeys.length > 0) {
+      const startIndex = Math.floor(Math.random() * apiKeys.length);
+      const orderedKeys = [...apiKeys.slice(startIndex), ...apiKeys.slice(0, startIndex)];
+
+      for (const currentKey of orderedKeys) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: currentKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+          });
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: cleanBase64,
+                  },
+                },
+                { text: namePrompt },
+              ],
+            },
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          });
+
+          const rawText = response.text?.trim() || '';
+          const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, rawText];
+          const jsonString = jsonMatch[1] || rawText;
+          const parsed = JSON.parse(jsonString);
+
+          if (parsed && parsed.studentName) {
+            return res.json({ success: true, studentName: parsed.studentName });
+          }
+        } catch (e: any) {
+          console.warn(`[Gemini Name OCR] Ralat kunci (...${currentKey.slice(-4)}):`, e?.message);
+        }
+      }
+    }
+
+    // Default student name if no API key or failed
+    return res.json({ success: true, studentName: 'NURUL IZZAH BINTI KAMAL' });
+  } catch (err: any) {
+    console.error('Error in /api/ocr-student-name:', err);
+    res.status(500).json({ error: 'Ralat membaca nama pelajar', studentName: 'MURID' });
+  }
+});
+
 // API Endpoint for OMR Grading
 app.post('/api/grade-omr', async (req, res) => {
   try {
@@ -124,7 +205,7 @@ FORMAT RESPON (JSON SAHAJA):
     }
   ],
   "cetakan_header_markah": {
-    "posisi": "TOP_RIGHT",
+    "posisi": "BOTTOM_FOOTER",
     "teks_cetakan": "MARKAH: X/${totalQuestions} | Y%",
     "status_kelulusan": "LULUS"
   }

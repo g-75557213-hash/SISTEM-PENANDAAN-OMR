@@ -190,47 +190,49 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
         }
       });
 
-      // 3. Draw Official Header Score Stamp (TOP_RIGHT)
+      // 3. Draw Official Score Stamp (SEMAKAN OMR RASMI diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas)
       if (showHeaderStamp) {
         ctx.save();
         const headerInfo = gradingResult.cetakan_header_markah;
         const summary = gradingResult.ringkasan_keputusan;
 
-        const stampW = w * 0.28;
-        const stampH = h * 0.085;
-        const stampX = w - stampW - (w * 0.06);
-        const stampY = h * 0.115;
-
-        // Stamp background badge
         const isLulus = headerInfo.status_kelulusan === 'LULUS' || headerInfo.status_kelulusan === 'CEMERLANG';
         const strokeColor = isLulus ? '#059669' : '#dc2626';
-        const bgColor = isLulus ? 'rgba(236, 253, 245, 0.96)' : 'rgba(254, 242, 242, 0.96)';
+        const bgColor = isLulus ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
 
-        // Examiner Stamp Border (Double border for realistic exam grading stamp)
+        // Position: compact and neat in the empty footer space below question grid
+        const stampW = Math.min(520, Math.round(w * 0.52));
+        const stampH = Math.max(48, Math.round(h * 0.042));
+        const stampX = (w - stampW) / 2;
+        const stampY = Math.round(h - stampH - h * 0.022);
+
+        // Stamp card background
         ctx.fillStyle = bgColor;
-        ctx.fillRect(stampX, stampY, stampW, stampH);
+        ctx.beginPath();
+        ctx.roundRect(stampX, stampY, stampW, stampH, 8);
+        ctx.fill();
 
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(stampX, stampY, stampW, stampH);
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
         ctx.lineWidth = 1;
-        ctx.strokeRect(stampX + 4, stampY + 4, stampW - 8, stampH - 8);
+        ctx.beginPath();
+        ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
+        ctx.stroke();
 
-        // Header Stamp Content
+        // Line 1: Title & Status
         ctx.textAlign = 'center';
         ctx.fillStyle = strokeColor;
-        ctx.font = `bold ${Math.round(stampH * 0.22)}px "Plus Jakarta Sans", sans-serif`;
-        ctx.fillText('SEMAKAN OMR AI RASMI', stampX + stampW / 2, stampY + stampH * 0.28);
+        ctx.font = `bold ${Math.max(12, Math.round(stampH * 0.28))}px "Plus Jakarta Sans", sans-serif`;
+        ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${headerInfo.status_kelulusan}`, stampX + stampW / 2, stampY + stampH * 0.40);
 
-        // Score text
-        ctx.font = `bold ${Math.round(stampH * 0.32)}px "JetBrains Mono", monospace`;
-        ctx.fillText(headerInfo.teks_cetakan || `MARKAH: ${summary.jumlah_markah} | ${summary.peratusan}`, stampX + stampW / 2, stampY + stampH * 0.62);
-
-        // Status pill
-        ctx.font = `bold ${Math.round(stampH * 0.18)}px "Plus Jakarta Sans", sans-serif`;
-        const statusText = `STATUS: ${headerInfo.status_kelulusan} (${summary.jawapan_betul} BETUL / ${summary.jawapan_salah} SALAH)`;
-        ctx.fillText(statusText, stampX + stampW / 2, stampY + stampH * 0.88);
+        // Line 2: Score text & counts
+        ctx.font = `bold ${Math.max(11, Math.round(stampH * 0.25))}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+        const scoreStr = headerInfo.teks_cetakan || `MARKAH: ${summary.jumlah_markah} (${summary.peratusan})`;
+        const countStr = `[✔ ${summary.jawapan_betul} BETUL  •  ✘ ${summary.jawapan_salah} SALAH]`;
+        ctx.fillText(`${scoreStr}   •   ${countStr}`, stampX + stampW / 2, stampY + stampH * 0.78);
 
         ctx.restore();
       }
@@ -335,9 +337,9 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 shrink-0 text-[11px] ${
               showHeaderStamp ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
-            title="Togol Cetakan Header Markah Rasmi"
+            title="Togol Paparan Semakan OMR Rasmi di Bawah Kertas"
           >
-            Header Markah
+            Semakan OMR Rasmi
           </button>
           <button
             onClick={() => setShowBoxes(!showBoxes)}

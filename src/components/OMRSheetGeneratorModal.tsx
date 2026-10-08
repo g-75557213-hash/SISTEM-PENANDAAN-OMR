@@ -21,9 +21,25 @@ export const OMRSheetGeneratorModal: React.FC<OMRSheetGeneratorModalProps> = ({
   // Template settings based on user uploaded template
   const [subject, setSubject] = useState('SAINS');
   const [totalQuestions, setTotalQuestions] = useState<number>(20);
+  const [questionsInput, setQuestionsInput] = useState<string>('20');
   const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
   const [mode, setMode] = useState<'blank' | 'filled'>('blank');
   const [showCorrectionColumn, setShowCorrectionColumn] = useState(true);
+
+  const handleQuestionsChange = (val: string) => {
+    setQuestionsInput(val);
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      setTotalQuestions(parsed);
+    }
+  };
+
+  const handleQuestionsBlur = () => {
+    if (!questionsInput || parseInt(questionsInput, 10) < 1) {
+      setQuestionsInput('20');
+      setTotalQuestions(20);
+    }
+  };
 
   // Redraw whenever parameters change
   useEffect(() => {
@@ -175,19 +191,41 @@ export const OMRSheetGeneratorModal: React.FC<OMRSheetGeneratorModalProps> = ({
             <div className="bg-slate-950/80 p-3.5 rounded-xl border border-indigo-500/20 flex flex-col gap-2">
               <label className="text-slate-200 font-bold flex items-center justify-between">
                 <span>Jumlah Soalan:</span>
-                <span className="text-purple-400 font-mono">{totalQuestions} Soalan</span>
+                <span className="text-purple-400 font-mono">
+                  {questionsInput && parseInt(questionsInput, 10) > 0 ? `${questionsInput} Soalan` : 'Masukkan jumlah...'}
+                </span>
               </label>
+              <div className="flex gap-1.5 flex-wrap">
+                {[10, 20, 30, 40, 50, 60, 80].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => {
+                      setQuestionsInput(String(n));
+                      setTotalQuestions(n);
+                    }}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                      totalQuestions === n
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-500'
+                        : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
               <input
                 type="number"
                 min={1}
-                max={80}
-                value={totalQuestions}
-                onChange={(e) => setTotalQuestions(Math.max(1, Math.min(80, Number(e.target.value) || 1)))}
+                max={100}
+                value={questionsInput}
+                onChange={(e) => handleQuestionsChange(e.target.value)}
+                onBlur={handleQuestionsBlur}
                 className="w-full px-3 py-2 bg-slate-900 border border-indigo-500/30 rounded-lg text-sm font-mono font-bold text-purple-400 focus:outline-none focus:border-purple-500"
                 placeholder="Masukkan jumlah soalan, cth: 20 atau 40"
               />
               <p className="text-[10px] text-slate-500">
-                Saiz grid diselaraskan secara automatik supaya muat elok dalam 1 helai A4.
+                Boleh dikosongkan untuk masukkan apa-apa jumlah soalan yang diingini. Susun atur lajur A4 diselaraskan secara automatik.
               </p>
             </div>
 

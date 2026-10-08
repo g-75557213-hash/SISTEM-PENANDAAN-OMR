@@ -45,7 +45,7 @@ export const ClassFolderManager: React.FC<ClassFolderManagerProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newClassName, setNewClassName] = useState('');
   const [newSubjectName, setNewSubjectName] = useState('SAINS');
-  const [newTotalQuestions, setNewTotalQuestions] = useState(20);
+  const [newTotalQuestions, setNewTotalQuestions] = useState<string>('20');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('ALL');
 
   // Extract all distinct subjects across teacher's folders
@@ -64,8 +64,11 @@ export const ClassFolderManager: React.FC<ClassFolderManagerProps> = ({
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) return;
-    onCreateClass(newClassName.trim(), newSubjectName.trim().toUpperCase(), newTotalQuestions);
+    const parsedQ = parseInt(newTotalQuestions, 10);
+    const qCount = !isNaN(parsedQ) && parsedQ > 0 ? parsedQ : 20;
+    onCreateClass(newClassName.trim(), newSubjectName.trim().toUpperCase(), qCount);
     setNewClassName('');
+    setNewTotalQuestions('20');
     setShowCreateModal(false);
   };
 
@@ -559,14 +562,34 @@ export const ClassFolderManager: React.FC<ClassFolderManagerProps> = ({
 
               <div>
                 <label className="block text-slate-400 mb-1 font-semibold">Jumlah Soalan Ujian:</label>
+                <div className="flex gap-1.5 mb-2 flex-wrap">
+                  {[10, 20, 30, 40, 50, 60, 80].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setNewTotalQuestions(String(n))}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                        newTotalQuestions === String(n)
+                          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-500'
+                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="number"
                   min={1}
-                  max={80}
-                  required
+                  max={100}
                   value={newTotalQuestions}
-                  onChange={(e) => setNewTotalQuestions(Math.max(1, Math.min(80, Number(e.target.value) || 1)))}
-                  placeholder="cth: 20 atau 40"
+                  onChange={(e) => setNewTotalQuestions(e.target.value)}
+                  onBlur={() => {
+                    if (!newTotalQuestions || parseInt(newTotalQuestions, 10) < 1) {
+                      setNewTotalQuestions('20');
+                    }
+                  }}
+                  placeholder="Masukkan jumlah soalan, cth: 20, 40, 50"
                   className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 rounded-lg text-purple-400 font-mono font-bold focus:outline-none focus:border-purple-500"
                 />
               </div>

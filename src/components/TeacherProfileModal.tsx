@@ -95,6 +95,13 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
               <img
                 src={avatarUrl}
                 alt={name}
+                onError={() => {
+                  setAvatarUrl(
+                    `data:image/svg+xml;utf8,${encodeURIComponent(
+                      `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" rx="64" fill="#4f46e5"/><text x="64" y="74" font-family="sans-serif" font-size="52" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">G</text></svg>`
+                    )}`
+                  );
+                }}
                 className="w-20 h-20 rounded-full object-cover ring-4 ring-purple-500/80 shadow-xl shadow-purple-950/60"
               />
               <button

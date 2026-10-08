@@ -184,14 +184,17 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
   // 4. Dynamic Column Calculation to guarantee fit on single A4 sheet
   // If <= 20 questions -> 2 columns (e.g. 1-10, 11-20, exactly as in sample image!)
   // If 21-40 questions -> 2 columns of 15-20 or 3 columns
-  // If > 40 questions -> 3 columns or 4 columns
+  // If 41-60 questions -> 3 columns
+  // If > 60 questions -> 4 columns
   let numColumns = 2;
   if (totalQuestions <= 20) {
     numColumns = 2;
   } else if (totalQuestions <= 40) {
     numColumns = totalQuestions > 30 ? 3 : 2;
-  } else {
+  } else if (totalQuestions <= 60) {
     numColumns = 3;
+  } else {
+    numColumns = 4;
   }
 
   const questionsPerColumn = Math.ceil(totalQuestions / numColumns);
@@ -202,11 +205,11 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
   const gridStartY = 330;
   // Leave bottom space for Error Summary Box if there are wrong answers
   const availableGridHeight = height - gridStartY - 240;
-  const rowHeight = Math.min(52, Math.max(34, Math.floor(availableGridHeight / questionsPerColumn)));
-  const bubbleRadius = Math.min(15, Math.max(11, Math.round(rowHeight * 0.30)));
+  const rowHeight = Math.min(52, Math.max(26, Math.floor(availableGridHeight / questionsPerColumn)));
+  const bubbleRadius = Math.min(15, Math.max(9, Math.round(rowHeight * 0.30)));
 
   const contentWidth = width - 200; // side margins
-  const columnGap = numColumns === 2 ? 60 : 35;
+  const columnGap = numColumns === 2 ? 60 : (numColumns === 3 ? 35 : 20);
   const columnWidth = Math.floor((contentWidth - (numColumns - 1) * columnGap) / numColumns);
   const startX = 100;
 
@@ -373,74 +376,53 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
     }
   }
 
-  // 5. Ruang Bawah: Kotak Ringkasan Soalan Salah & Markah (Error Summary & Remedial Box)
-  const bottomBoxY = height - 190;
-  const bottomBoxH = 110;
-  const bottomBoxW = width - 220;
-
+  // 5. Ruang Bawah: Semakan OMR Rasmi diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas
+  // (Ruang Analisis Pembetulan dibuang mengikut ketetapan semakan anotasi)
   ctx.save();
-  if (wrongQuestionsList.length > 0 || scoreText) {
-    // Red/Rose themed remedial box when there are wrong answers
-    ctx.fillStyle = '#fef2f2';
-    ctx.strokeStyle = '#dc2626';
+  if (scoreText || Object.keys(filledAnswers).length > 0) {
+    const isFullMarks = wrongQuestionsList.length === 0;
+    const strokeColor = isFullMarks ? '#059669' : '#dc2626';
+    const bgColor = isFullMarks ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
+
+    const stampW = Math.min(560, width - 240);
+    const stampH = 56;
+    const stampX = (width - stampW) / 2;
+    const stampY = height - 130;
+
+    // Neat double-border compact card
+    ctx.fillStyle = bgColor;
+    ctx.beginPath();
+    ctx.roundRect(stampX, stampY, stampW, stampH, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
-    ctx.fill();
     ctx.stroke();
 
-    // Remedial Header
-    ctx.fillStyle = '#991b1b';
-    ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('RUANG ANALISIS PEMBETULAN & SOALAN SALAH (KEGUNAAN PEMERIKSA & MURID):', 130, bottomBoxY + 28);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
+    ctx.stroke();
 
-    // List of wrong questions with correct answers
-    ctx.font = '600 14px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#7f1d1d';
+    // Line 1: Header
+    ctx.textAlign = 'center';
+    ctx.fillStyle = strokeColor;
+    ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${isFullMarks ? 'CEMERLANG' : 'LULUS'}`, stampX + stampW / 2, stampY + 22);
 
-    if (wrongQuestionsList.length > 0) {
-      const summaryItems = wrongQuestionsList
-        .slice(0, 12)
-        .map((w) => `No.${w.q}: [${w.student}] ➜ Jawapan: ${w.correct}`)
-        .join('   |   ');
-      ctx.fillText(summaryItems, 130, bottomBoxY + 60);
-
-      if (wrongQuestionsList.length > 12) {
-        ctx.font = '12px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(`(+ ${wrongQuestionsList.length - 12} lagi soalan salah - rujuk tanda pangkah di sebelah)`, 130, bottomBoxY + 88);
-      }
-    } else {
-      ctx.fillStyle = '#15803d';
-      ctx.fillText('Tahniah! Semua soalan dijawab dengan betul (100% Cemerlang).', 130, bottomBoxY + 60);
-    }
-
-    // Right-hand score stamp
-    if (scoreText) {
-      ctx.textAlign = 'right';
-      ctx.font = 'bold 20px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#991b1b';
-      ctx.fillText(scoreText, 110 + bottomBoxW - 20, bottomBoxY + 40);
-    }
+    // Line 2: Score & counts
+    ctx.font = 'bold 12px "JetBrains Mono", monospace';
+    ctx.fillStyle = isFullMarks ? '#065f46' : '#991b1b';
+    const betulCount = totalQuestions - wrongQuestionsList.length;
+    const salahCount = wrongQuestionsList.length;
+    const markahText = scoreText || `MARKAH: ${betulCount}/${totalQuestions}`;
+    ctx.fillText(`${markahText}   •   [✔ ${betulCount} BETUL  •  ✘ ${salahCount} SALAH]`, stampX + stampW / 2, stampY + 43);
   } else {
-    // Standard Examiner Space in blank mode
-    ctx.fillStyle = '#f9fafb';
-    ctx.strokeStyle = '#9ca3af';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 4]);
-    ctx.beginPath();
-    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#4b5563';
-    ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('RUANG CATATAN & PEMBETULAN GURU / PEMERIKSA:', 130, bottomBoxY + 30);
-
-    ctx.font = 'italic 12px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#9ca3af';
-    ctx.fillText('(Ruang ini akan memaparkan senarai soalan yang salah serta analisis kelemahan murid secara automatik)', 130, bottomBoxY + 65);
+    // Blank sheet mode: Minimal, neat examiner verification line in footer
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '500 13px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ruang Pengesahan Pemeriksa: ______________________________     Tarikh: _______________', width / 2, height - 90);
   }
   ctx.restore();
 

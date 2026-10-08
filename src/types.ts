@@ -45,7 +45,7 @@ export interface RingkasanKeputusan {
 }
 
 export interface CetakanHeaderMarkah {
-  posisi: 'TOP_RIGHT' | 'TOP_CENTER' | 'TOP_LEFT';
+  posisi: 'BOTTOM_FOOTER' | 'TOP_RIGHT' | 'TOP_CENTER' | 'TOP_LEFT';
   teks_cetakan: string; // e.g. "MARKAH: 35/40 | 87.5%"
   status_kelulusan: 'LULUS' | 'GAGAL' | 'CEMERLANG';
   tarikh?: string;

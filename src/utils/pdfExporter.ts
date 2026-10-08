@@ -127,83 +127,47 @@ export function generateMarksOnlyCanvas(
     }
   });
 
-  // Top-Right Examiner Score Stamp
+  // Semakan OMR Rasmi - Diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas
+  // (Ruang Analisis Pembetulan dibuang mengikut ketetapan semakan anotasi)
   ctx.save();
-  const stampW = width * 0.28;
-  const stampH = height * 0.085;
-  const stampX = width - stampW - (width * 0.06);
-  const stampY = height * 0.095;
-
   const isLulus = cetakan_header_markah.status_kelulusan === 'LULUS' || cetakan_header_markah.status_kelulusan === 'CEMERLANG';
   const strokeColor = isLulus ? '#059669' : '#dc2626';
-  const bgColor = isLulus ? 'rgba(236, 253, 245, 0.96)' : 'rgba(254, 242, 242, 0.96)';
+  const bgColor = isLulus ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
 
+  // Compact size: height 56px, centered horizontally in bottom whitespace
+  const stampW = Math.min(560, width - 240);
+  const stampH = 56;
+  const stampX = (width - stampW) / 2;
+  const stampY = height - 130;
+
+  // Background pill / box with neat double border
   ctx.fillStyle = bgColor;
-  ctx.fillRect(stampX, stampY, stampW, stampH);
+  ctx.beginPath();
+  ctx.roundRect(stampX, stampY, stampW, stampH, 8);
+  ctx.fill();
+
   ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 2.5;
-  ctx.strokeRect(stampX, stampY, stampW, stampH);
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
   ctx.lineWidth = 1;
-  ctx.strokeRect(stampX + 4, stampY + 4, stampW - 8, stampH - 8);
+  ctx.beginPath();
+  ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
+  ctx.stroke();
 
+  // Line 1: Official Header & Status (Small & Neat)
   ctx.textAlign = 'center';
   ctx.fillStyle = strokeColor;
-  ctx.font = `bold ${Math.round(stampH * 0.22)}px "Plus Jakarta Sans", sans-serif`;
-  ctx.fillText('SEMAKAN OMR AI RASMI', stampX + stampW / 2, stampY + stampH * 0.28);
+  ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${cetakan_header_markah.status_kelulusan}`, stampX + stampW / 2, stampY + 22);
 
-  ctx.font = `bold ${Math.round(stampH * 0.32)}px "JetBrains Mono", monospace`;
-  ctx.fillText(cetakan_header_markah.teks_cetakan || `MARKAH: ${ringkasan_keputusan.jumlah_markah} | ${ringkasan_keputusan.peratusan}`, stampX + stampW / 2, stampY + stampH * 0.62);
+  // Line 2: Compact summary score & counts
+  ctx.font = 'bold 12px "JetBrains Mono", monospace';
+  ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+  const summaryScoreText = cetakan_header_markah.teks_cetakan || `MARKAH: ${ringkasan_keputusan.jumlah_markah} (${ringkasan_keputusan.peratusan})`;
+  const countsText = `[✔ ${ringkasan_keputusan.jawapan_betul} BETUL  •  ✘ ${ringkasan_keputusan.jawapan_salah} SALAH]`;
+  ctx.fillText(`${summaryScoreText}   •   ${countsText}`, stampX + stampW / 2, stampY + 43);
 
-  ctx.font = `bold ${Math.round(stampH * 0.18)}px "Plus Jakarta Sans", sans-serif`;
-  ctx.fillText(`STATUS: ${cetakan_header_markah.status_kelulusan}`, stampX + stampW / 2, stampY + stampH * 0.88);
-  ctx.restore();
-
-  // Bottom Remedial Error Summary Box
-  const bottomBoxY = height - 190;
-  const bottomBoxH = 110;
-  const bottomBoxW = width - 220;
-
-  ctx.save();
-  if (wrongQuestionsList.length > 0) {
-    ctx.fillStyle = '#fef2f2';
-    ctx.strokeStyle = '#dc2626';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#991b1b';
-    ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('RUANG ANALISIS PEMBETULAN & SOALAN SALAH (PENANDAAN PEMERIKSA):', 130, bottomBoxY + 28);
-
-    ctx.font = '600 14px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#7f1d1d';
-    const summaryItems = wrongQuestionsList
-      .slice(0, 12)
-      .map((w) => `No.${w.q}: [${w.student}] ➜ Jawapan: ${w.correct}`)
-      .join('   |   ');
-    ctx.fillText(summaryItems, 130, bottomBoxY + 60);
-
-    if (wrongQuestionsList.length > 12) {
-      ctx.font = '12px "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(`(+ ${wrongQuestionsList.length - 12} lagi soalan salah - rujuk tanda pangkah di sebelah)`, 130, bottomBoxY + 88);
-    }
-  } else {
-    ctx.fillStyle = '#f0fdf4';
-    ctx.strokeStyle = '#16a34a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#15803d';
-    ctx.font = 'bold 16px "Plus Jakarta Sans", sans-serif';
-    ctx.fillText('TAHNIAH! SEMUA SOALAN DIJAWAB DENGAN BETUL (100% CEMERLANG).', 130, bottomBoxY + 60);
-  }
   ctx.restore();
 
   return canvas;

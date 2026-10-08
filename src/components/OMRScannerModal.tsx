@@ -164,14 +164,14 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xs sm:text-sm font-bold text-white tracking-tight">
-                  Kamera Panduan 4 Sudut
+                  Kamera Panduan 6 Titik Penjuru
                 </h2>
                 <span className="text-[10px] font-mono bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30 font-bold">
                   {targetClassName}
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 truncate max-w-[240px] sm:max-w-none">
-                Sejajarkan 4 kotak hitam di penjuru kertas fizikal
+                Sejajarkan 6 kotak hitam fiducial pada kertas (Atas, Tengah, Bawah)
               </p>
             </div>
           </div>
@@ -232,62 +232,101 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                 className="w-full h-full object-cover"
               />
 
-              {/* 4 Corner Optical Alignment Overlay - Uncluttered & Mobile Precision */}
-              <div className="absolute inset-4 sm:inset-8 border border-dashed border-purple-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-2 select-none">
-                {/* Top Row */}
+              {/* 6 Point Optical Alignment Overlay (Top-L, Top-R, Mid-L, Mid-R, Bot-L, Bot-R) */}
+              <div className="absolute inset-3 sm:inset-6 border-2 border-dashed border-purple-400/50 rounded-xl pointer-events-none flex flex-col justify-between p-2 select-none">
+                {/* 1. TOP ROW MARKERS (2 points) */}
                 <div className="flex justify-between items-start">
-                  {/* Top-Left Target Bracket */}
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-t-3 border-l-3 border-purple-400 rounded-tl flex items-center justify-center bg-purple-500/10 shadow-sm">
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-black border border-purple-300"></div>
-                  </div>
-
-                  {/* Top Center Guide Banner */}
-                  <div className="bg-black/80 backdrop-blur px-3 py-1 rounded-full border border-purple-500/40 text-center shadow">
-                    <span className="text-[10px] sm:text-xs font-semibold text-purple-300 flex items-center gap-1.5">
-                      <Target className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-purple-400 shrink-0" />
-                      Sejajarkan 4 Kotak Penjuru Kertas
+                  {/* Top-Left Fiducial Target */}
+                  <div className="flex flex-col items-start gap-1">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 border-t-4 border-l-4 border-emerald-400 rounded-tl flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
+                    <span className="text-[8px] sm:text-[9px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded">
+                      TITIK 1: ATAS KIRI
                     </span>
                   </div>
 
-                  {/* Top Right Target Bracket */}
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-t-3 border-r-3 border-purple-400 rounded-tr flex items-center justify-center bg-purple-500/10 shadow-sm">
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-black border border-purple-300"></div>
+                  {/* Top Center Guide Banner */}
+                  <div className="bg-slate-950/90 backdrop-blur px-3 py-1 rounded-full border border-purple-400/60 text-center shadow-lg">
+                    <span className="text-[10px] sm:text-xs font-semibold text-purple-200 flex items-center gap-1.5">
+                      <Target className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-purple-400 shrink-0" />
+                      Sejajarkan 6 Kotak Penjuru Fiducial Kertas
+                    </span>
+                  </div>
+
+                  {/* Top-Right Fiducial Target */}
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 border-t-4 border-r-4 border-emerald-400 rounded-tr flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
+                    <span className="text-[8px] sm:text-[9px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded">
+                      TITIK 2: ATAS KANAN
+                    </span>
                   </div>
                 </div>
 
-                {/* Center A4 Portrait Reference Reticle */}
-                <div className="flex justify-between items-center w-full px-1">
-                  <div className="w-3 h-6 bg-purple-400/60 rounded-r"></div>
-                  <div className="text-center font-mono text-[9px] sm:text-[10px] text-slate-300/80 bg-black/60 px-2 py-0.5 rounded border border-indigo-500/30">
-                    Kertas A4 Tegak
+                {/* 2. MIDDLE ROW MARKERS (2 points) */}
+                <div className="flex justify-between items-center w-full px-0.5">
+                  {/* Mid-Left Fiducial Target */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 border-l-4 border-t-2 border-b-2 border-emerald-400 flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
+                    <span className="text-[8px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded hidden xs:inline">
+                      TITIK 3 (TENGAH)
+                    </span>
                   </div>
-                  <div className="w-3 h-6 bg-purple-400/60 rounded-l"></div>
+
+                  {/* Middle Center Info */}
+                  <div className="text-center font-mono text-[9px] sm:text-[10px] text-purple-200 bg-slate-950/80 px-2.5 py-0.5 rounded-full border border-purple-500/40">
+                    6 Titik Penjuru Berketepatan Tinggi
+                  </div>
+
+                  {/* Mid-Right Fiducial Target */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded hidden xs:inline">
+                      TITIK 4 (TENGAH)
+                    </span>
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 border-r-4 border-t-2 border-b-2 border-emerald-400 flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Bottom Row */}
+                {/* 3. BOTTOM ROW MARKERS (2 points) */}
                 <div className="flex justify-between items-end">
-                  {/* Bottom-Left Target Bracket */}
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-b-3 border-l-3 border-purple-400 rounded-bl flex items-center justify-center bg-purple-500/10 shadow-sm">
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-black border border-purple-300"></div>
+                  {/* Bottom-Left Fiducial Target */}
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="text-[8px] sm:text-[9px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded">
+                      TITIK 5: BAWAH KIRI
+                    </span>
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 border-b-4 border-l-4 border-emerald-400 rounded-bl flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
                   </div>
 
-                  {/* Lock Alignment Status */}
+                  {/* Lock Alignment Button */}
                   <button
                     type="button"
                     onClick={() => setIsCornerAligned(!isCornerAligned)}
-                    className={`pointer-events-auto px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
+                    className={`pointer-events-auto px-3.5 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
                       isCornerAligned
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-300 shadow-purple-950/60'
-                        : 'bg-black/80 text-purple-300 border-purple-500/60'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-300 shadow-emerald-950/60'
+                        : 'bg-black/85 text-emerald-300 border-emerald-500/60 hover:bg-slate-900'
                     }`}
                   >
-                    <Crosshair className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    {isCornerAligned ? '✔ Penjuru Terkunci' : 'Kunci Penjuru'}
+                    <Crosshair className="w-3.5 h-3.5" />
+                    {isCornerAligned ? '✔ 6 Titik Terkunci Sempurna' : 'Kunci 6 Titik Penjuru'}
                   </button>
 
-                  {/* Bottom-Right Target Bracket */}
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-b-3 border-r-3 border-purple-400 rounded-br flex items-center justify-center bg-purple-500/10 shadow-sm">
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-black border border-purple-300"></div>
+                  {/* Bottom-Right Fiducial Target */}
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[8px] sm:text-[9px] font-mono text-emerald-300 font-bold bg-black/70 px-1 rounded">
+                      TITIK 6: BAWAH KANAN
+                    </span>
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 border-b-4 border-r-4 border-emerald-400 rounded-br flex items-center justify-center bg-emerald-500/20 shadow-md">
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-emerald-300 shadow"></div>
+                    </div>
                   </div>
                 </div>
               </div>
