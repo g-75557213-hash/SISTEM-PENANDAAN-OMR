@@ -1,0 +1,9 @@
+{
+  "name": "Penanda OMR Pintar AI - Visual OMR Marking & Grading Engine",
+  "description": "Sistem pengecaman tanda optik (OMR) pintar berasaskan AI untuk memeriksa kertas jawapan objektif secara automatik dengan cetakan visual markah, skema jawapan, dan analisis.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

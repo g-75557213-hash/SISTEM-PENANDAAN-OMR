@@ -1,0 +1,452 @@
+// Canvas generator for standard Malaysian A4 OMR Examination Answer Sheets
+// Based on exact template layout with A4 single page guarantee and dedicated side correction area.
+
+export interface DrawOMROptions {
+  studentName?: string;
+  studentClass?: string;
+  subject?: string;
+  sectionTitle?: string;
+  totalQuestions?: number;
+  optionsCount?: 4 | 5; // 4 (A-D) or 5 (A-E as shown in uploaded template)
+  filledAnswers?: Record<number, string>; // e.g. { 1: 'A', 2: 'C' }
+  correctAnswers?: Record<number, string>; // if provided, renders marks & corrections in the side space
+  showCorrectionColumn?: boolean; // dedicated side space for marks and correct answers
+  simulatePencilTexture?: boolean;
+  scoreText?: string; // e.g. "MARKAH: 18/20 (90%)"
+}
+
+export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: DrawOMROptions) {
+  const {
+    studentName = '',
+    studentClass = '',
+    subject = 'SAINS',
+    sectionTitle = 'Bahagian A',
+    totalQuestions = 20,
+    optionsCount = 5,
+    filledAnswers = {},
+    correctAnswers = {},
+    showCorrectionColumn = true,
+    simulatePencilTexture = true,
+    scoreText = '',
+  } = drawOptions;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Exact A4 portrait aspect ratio (1:1.414), 1240 x 1754 px @ 150 DPI
+  const width = 1240;
+  const height = 1754;
+  canvas.width = width;
+  canvas.height = height;
+
+  // Background - clean crisp white paper
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  // 1. Black Fiducial Optical Alignment Markers (6 squares as in user template image)
+  const markerSize = 34;
+  const markerMargin = 40;
+  ctx.fillStyle = '#000000';
+
+  // Top-Left & Top-Right
+  const topMarkerY = 145;
+  ctx.fillRect(markerMargin, topMarkerY, markerSize, markerSize);
+  ctx.fillRect(width - markerMargin - markerSize, topMarkerY, markerSize, markerSize);
+
+  // Middle-Left & Middle-Right
+  const midMarkerY = Math.round(height * 0.52);
+  ctx.fillRect(markerMargin, midMarkerY, markerSize, markerSize);
+  ctx.fillRect(width - markerMargin - markerSize, midMarkerY, markerSize, markerSize);
+
+  // Bottom-Left & Bottom-Right
+  const botMarkerY = height - markerMargin - markerSize - 20;
+  ctx.fillRect(markerMargin, botMarkerY, markerSize, markerSize);
+  ctx.fillRect(width - markerMargin - markerSize, botMarkerY, markerSize, markerSize);
+
+  // 2. Header Instructions (Bilingual Malay & English matching the uploaded image)
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#111827';
+  ctx.font = '500 23px "Plus Jakarta Sans", "Times New Roman", serif';
+  ctx.fillText(`Isikan Jawapan anda bagi ${sectionTitle} pada ruang di bawah`, 110, 68);
+
+  ctx.font = 'italic 500 20px "Plus Jakarta Sans", "Times New Roman", serif';
+  ctx.fillStyle = '#374151';
+  ctx.fillText(`Fill in your answer for Section A in the space below`, 110, 102);
+
+  // 3. Student Information Box (Exact layout matching template image)
+  // Rounded rectangular box with 2 rows: NAMA on top row, KELAS and SUBJEK on bottom row
+  const infoBoxX = 110;
+  const infoBoxY = 145;
+  const infoBoxW = width - 220;
+  const infoBoxH = 125;
+  const radius = 24;
+
+  ctx.save();
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = '#000000';
+
+  // Outer rounded container
+  ctx.beginPath();
+  ctx.roundRect(infoBoxX, infoBoxY, infoBoxW, infoBoxH, radius);
+  ctx.stroke();
+
+  // Horizontal divider between row 1 (NAMA) and row 2 (KELAS/SUBJEK)
+  const rowDividerY = infoBoxY + infoBoxH * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(infoBoxX, rowDividerY);
+  ctx.lineTo(infoBoxX + infoBoxW, rowDividerY);
+  ctx.stroke();
+
+  // Row 1: NAMA label compartment (grey background with rounded top-left)
+  const labelNamaW = 160;
+  ctx.fillStyle = '#d1d5db'; // solid grey tone as in image
+  ctx.beginPath();
+  ctx.roundRect(infoBoxX, infoBoxY, labelNamaW, infoBoxH * 0.5, [radius, 0, 0, 0]);
+  ctx.fill();
+  ctx.stroke();
+
+  // Vertical line after NAMA label
+  ctx.beginPath();
+  ctx.moveTo(infoBoxX + labelNamaW, infoBoxY);
+  ctx.lineTo(infoBoxX + labelNamaW, rowDividerY);
+  ctx.stroke();
+
+  // NAMA Text Label
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NAMA', infoBoxX + labelNamaW / 2, infoBoxY + (infoBoxH * 0.25));
+
+  // Student name value (if provided)
+  if (studentName) {
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 22px "JetBrains Mono", monospace';
+    ctx.fillText(studentName.toUpperCase(), infoBoxX + labelNamaW + 20, infoBoxY + (infoBoxH * 0.25));
+  }
+
+  // Row 2: KELAS label compartment (grey background with rounded bottom-left)
+  const labelKelasW = 160;
+  const valueKelasW = 260;
+
+  ctx.fillStyle = '#d1d5db';
+  ctx.beginPath();
+  ctx.roundRect(infoBoxX, rowDividerY, labelKelasW, infoBoxH * 0.5, [0, 0, 0, radius]);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(infoBoxX + labelKelasW, rowDividerY);
+  ctx.lineTo(infoBoxX + labelKelasW, infoBoxY + infoBoxH);
+  ctx.stroke();
+
+  // KELAS Text Label
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('KELAS', infoBoxX + labelKelasW / 2, rowDividerY + (infoBoxH * 0.25));
+
+  // Student class value (if provided)
+  if (studentClass) {
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 20px "JetBrains Mono", monospace';
+    ctx.fillText(studentClass.toUpperCase(), infoBoxX + labelKelasW + 20, rowDividerY + (infoBoxH * 0.25));
+  }
+
+  // Row 2: Vertical separator before SUBJEK
+  const subjekStartX = infoBoxX + labelNamaW + valueKelasW;
+  const labelSubjekW = 160;
+
+  ctx.beginPath();
+  ctx.moveTo(subjekStartX, rowDividerY);
+  ctx.lineTo(subjekStartX, infoBoxY + infoBoxH);
+  ctx.stroke();
+
+  // SUBJEK label compartment (grey background)
+  ctx.fillStyle = '#d1d5db';
+  ctx.fillRect(subjekStartX, rowDividerY, labelSubjekW, infoBoxH * 0.5);
+  ctx.strokeRect(subjekStartX, rowDividerY, labelSubjekW, infoBoxH * 0.5);
+
+  // SUBJEK Text Label
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SUBJEK', subjekStartX + labelSubjekW / 2, rowDividerY + (infoBoxH * 0.25));
+
+  // SUBJEK Value compartment
+  const subjekValueX = subjekStartX + labelSubjekW;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(subject.toUpperCase(), subjekValueX + (infoBoxX + infoBoxW - subjekValueX) / 2, rowDividerY + (infoBoxH * 0.25));
+
+  ctx.restore();
+
+  // 4. Dynamic Column Calculation to guarantee fit on single A4 sheet
+  // If <= 20 questions -> 2 columns (e.g. 1-10, 11-20, exactly as in sample image!)
+  // If 21-40 questions -> 2 columns of 15-20 or 3 columns
+  // If > 40 questions -> 3 columns or 4 columns
+  let numColumns = 2;
+  if (totalQuestions <= 20) {
+    numColumns = 2;
+  } else if (totalQuestions <= 40) {
+    numColumns = totalQuestions > 30 ? 3 : 2;
+  } else {
+    numColumns = 3;
+  }
+
+  const questionsPerColumn = Math.ceil(totalQuestions / numColumns);
+  const optionsList: Array<'A' | 'B' | 'C' | 'D' | 'E'> =
+    optionsCount === 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C', 'D', 'E'];
+
+  // Grid Dimensions
+  const gridStartY = 330;
+  // Leave bottom space for Error Summary Box if there are wrong answers
+  const availableGridHeight = height - gridStartY - 240;
+  const rowHeight = Math.min(52, Math.max(34, Math.floor(availableGridHeight / questionsPerColumn)));
+  const bubbleRadius = Math.min(15, Math.max(11, Math.round(rowHeight * 0.30)));
+
+  const contentWidth = width - 200; // side margins
+  const columnGap = numColumns === 2 ? 60 : 35;
+  const columnWidth = Math.floor((contentWidth - (numColumns - 1) * columnGap) / numColumns);
+  const startX = 100;
+
+  // Tracking mistakes for bottom summary box
+  const wrongQuestionsList: Array<{ q: number; student: string; correct: string }> = [];
+
+  // Draw each column
+  for (let col = 0; col < numColumns; col++) {
+    const colX = startX + col * (columnWidth + columnGap);
+
+    const startQ = col * questionsPerColumn + 1;
+    const endQ = Math.min((col + 1) * questionsPerColumn, totalQuestions);
+
+    if (startQ > totalQuestions) continue;
+
+    // Column Question Numbers width
+    const qNumWidth = 44;
+    const bubblesAreaWidth = optionsList.length * (bubbleRadius * 2 + 16);
+    const bubbleSpacing = Math.floor(bubblesAreaWidth / optionsList.length);
+    const bubblesStartX = colX + qNumWidth + 12;
+
+    // Side Correction Space (Ruang di sebelah bagi menunjukkan soalan yang salah)
+    const sideSpaceStartX = bubblesStartX + bubblesAreaWidth + 10;
+    const sideSpaceWidth = (colX + columnWidth) - sideSpaceStartX;
+
+    // Column Header Letters: A B C D E
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const headerY = gridStartY - 24;
+    for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
+      const bx = bubblesStartX + optIdx * bubbleSpacing + bubbleSpacing / 2;
+      ctx.fillText(optionsList[optIdx], bx, headerY);
+    }
+
+    // Side column header: "CATATAN / BETUL"
+    if (showCorrectionColumn && sideSpaceWidth > 50) {
+      ctx.fillStyle = '#6b7280';
+      ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('CATATAN / SEMAKAN', sideSpaceStartX + 6, headerY);
+
+      // Subtle vertical divider line before side correction column
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sideSpaceStartX, headerY - 14);
+      ctx.lineTo(sideSpaceStartX, gridStartY + (endQ - startQ + 1) * rowHeight);
+      ctx.stroke();
+    }
+
+    // Draw Questions in this column
+    for (let q = startQ; q <= endQ; q++) {
+      const rowIdx = q - startQ;
+      const rowY = gridStartY + rowIdx * rowHeight;
+      const centerY = rowY + rowHeight / 2;
+
+      // Question Number (Bold, high contrast as in template)
+      ctx.fillStyle = '#000000';
+      ctx.font = `bold ${Math.min(24, Math.round(rowHeight * 0.52))}px "Plus Jakarta Sans", sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${q}`, colX, centerY);
+
+      // Student answer & Correct answer
+      const studentAns = filledAnswers[q];
+      const correctAns = correctAnswers[q];
+      const hasEvaluation = correctAns !== undefined;
+      const isCorrect = hasEvaluation && studentAns === correctAns;
+      const isWrong = hasEvaluation && !isCorrect;
+
+      if (isWrong) {
+        wrongQuestionsList.push({
+          q,
+          student: studentAns || 'KOSONG',
+          correct: correctAns,
+        });
+      }
+
+      // Bubbles A, B, C, D (E)
+      for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
+        const opt = optionsList[optIdx];
+        const bubbleCenterX = bubblesStartX + optIdx * bubbleSpacing + bubbleSpacing / 2;
+        const bubbleCenterY = centerY;
+
+        const isFilled = studentAns === opt;
+        const isDoubleMark = studentAns === 'AMBIGU/DOUBLE_MARK' && (opt === 'A' || opt === 'B');
+
+        ctx.beginPath();
+        ctx.arc(bubbleCenterX, bubbleCenterY, bubbleRadius, 0, Math.PI * 2);
+
+        if (isFilled || isDoubleMark) {
+          // Shaded pencil mark
+          ctx.fillStyle = '#1e293b';
+          ctx.fill();
+
+          if (simulatePencilTexture) {
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.arc(bubbleCenterX - 2, bubbleCenterY - 2, bubbleRadius - 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else {
+          // Clean hollow circle outline as in template
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#4b5563';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+        }
+      }
+
+      // RUANG DI SEBELAH BAGI MENUNJUKKAN SOALAN YANG SALAH (Side Correction Column)
+      if (showCorrectionColumn) {
+        if (hasEvaluation) {
+          if (isCorrect) {
+            // Tanda Semak (✔) berwarna hijau
+            ctx.save();
+            ctx.fillStyle = '#16a34a';
+            ctx.font = `bold ${Math.round(rowHeight * 0.54)}px "Plus Jakarta Sans", sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText('✔ Betul', sideSpaceStartX + 8, centerY);
+            ctx.restore();
+          } else {
+            // Tanda Pangkah (✘) dan jawapan betul di ruang sebelah
+            ctx.save();
+            const badgeH = Math.min(28, rowHeight - 6);
+            const badgeY = centerY - badgeH / 2;
+
+            // Highlight pill
+            ctx.fillStyle = '#fee2e2';
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(sideSpaceStartX + 4, badgeY, Math.max(90, sideSpaceWidth - 8), badgeH, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            // Red cross & correct answer text
+            ctx.fillStyle = '#b91c1c';
+            ctx.font = `bold ${Math.min(14, Math.round(rowHeight * 0.38))}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'left';
+            ctx.fillText(`✘ Betul: ${correctAns}`, sideSpaceStartX + 12, centerY);
+            ctx.restore();
+          }
+        } else {
+          // In blank mode: draw light dotted line for teacher marking
+          ctx.save();
+          ctx.strokeStyle = '#e5e7eb';
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath();
+          ctx.moveTo(sideSpaceStartX + 10, centerY);
+          ctx.lineTo(sideSpaceStartX + Math.max(70, sideSpaceWidth - 10), centerY);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  // 5. Ruang Bawah: Kotak Ringkasan Soalan Salah & Markah (Error Summary & Remedial Box)
+  const bottomBoxY = height - 190;
+  const bottomBoxH = 110;
+  const bottomBoxW = width - 220;
+
+  ctx.save();
+  if (wrongQuestionsList.length > 0 || scoreText) {
+    // Red/Rose themed remedial box when there are wrong answers
+    ctx.fillStyle = '#fef2f2';
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Remedial Header
+    ctx.fillStyle = '#991b1b';
+    ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('RUANG ANALISIS PEMBETULAN & SOALAN SALAH (KEGUNAAN PEMERIKSA & MURID):', 130, bottomBoxY + 28);
+
+    // List of wrong questions with correct answers
+    ctx.font = '600 14px "JetBrains Mono", monospace';
+    ctx.fillStyle = '#7f1d1d';
+
+    if (wrongQuestionsList.length > 0) {
+      const summaryItems = wrongQuestionsList
+        .slice(0, 12)
+        .map((w) => `No.${w.q}: [${w.student}] ➜ Jawapan: ${w.correct}`)
+        .join('   |   ');
+      ctx.fillText(summaryItems, 130, bottomBoxY + 60);
+
+      if (wrongQuestionsList.length > 12) {
+        ctx.font = '12px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(`(+ ${wrongQuestionsList.length - 12} lagi soalan salah - rujuk tanda pangkah di sebelah)`, 130, bottomBoxY + 88);
+      }
+    } else {
+      ctx.fillStyle = '#15803d';
+      ctx.fillText('Tahniah! Semua soalan dijawab dengan betul (100% Cemerlang).', 130, bottomBoxY + 60);
+    }
+
+    // Right-hand score stamp
+    if (scoreText) {
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 20px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#991b1b';
+      ctx.fillText(scoreText, 110 + bottomBoxW - 20, bottomBoxY + 40);
+    }
+  } else {
+    // Standard Examiner Space in blank mode
+    ctx.fillStyle = '#f9fafb';
+    ctx.strokeStyle = '#9ca3af';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.roundRect(110, bottomBoxY, bottomBoxW, bottomBoxH, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#4b5563';
+    ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('RUANG CATATAN & PEMBETULAN GURU / PEMERIKSA:', 130, bottomBoxY + 30);
+
+    ctx.font = 'italic 12px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText('(Ruang ini akan memaparkan senarai soalan yang salah serta analisis kelemahan murid secara automatik)', 130, bottomBoxY + 65);
+  }
+  ctx.restore();
+
+  // Footer tracking
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '11px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`TEMPLAT OMR RASMI A4 | ${totalQuestions} SOALAN (${optionsList.length} PILIHAN) | ${subject.toUpperCase()} | KEMENTERIAN PENDIDIKAN MALAYSIA`, width / 2, height - 30);
+}
