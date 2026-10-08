@@ -43,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h2 className="text-xl font-bold text-white mb-2">Sistem Sedang Memuat Semula</h2>
             <p className="text-slate-400 text-sm mb-6">
-              Terdapat sedikit ralat semasa memproses halaman. Sila muat semula aplikasi untuk terus menggunakan Penanda OMR Pintar.
+              Terdapat sedikit ralat semasa memproses halaman. Sila muat semula aplikasi untuk terus menggunakan SISTEM PENANDAAN OMR.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button

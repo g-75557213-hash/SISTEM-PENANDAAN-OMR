@@ -8,7 +8,7 @@ import { OMRResultsView } from './components/OMRResultsView';
 import { OMRSheetGeneratorModal } from './components/OMRSheetGeneratorModal';
 import { OMRScannerModal } from './components/OMRScannerModal';
 import { ClassFolderManager } from './components/ClassFolderManager';
-import { GoogleAuthModal } from './components/GoogleAuthModal';
+import { GoogleAuthModal, getAccountProfileAvatar } from './components/GoogleAuthModal';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
 import {
   Scan,
@@ -79,7 +79,18 @@ export default function App() {
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser) as TeacherUser;
+        if (parsed.schoolName === 'SMK BANDAR UTAMA DAMANSARA') {
+          parsed.schoolName = 'SMK JENERI';
+        }
+        if (
+          !parsed.avatarUrl ||
+          parsed.avatarUrl.includes('unsplash.com') ||
+          parsed.avatarUrl.includes('dicebear.com')
+        ) {
+          parsed.avatarUrl = getAccountProfileAvatar(parsed.email, parsed.name);
+        }
         setCurrentUser(parsed);
+        localStorage.setItem('omr_teacher_active_user', JSON.stringify(parsed));
         loadTeacherFolders(parsed.email);
       } catch (e) {
         setIsAuthModalOpen(true);
@@ -355,12 +366,17 @@ export default function App() {
           {/* Top Bar: Brand & Google Teacher Profile */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 text-white font-black text-sm sm:text-base shrink-0 ring-1 ring-purple-400/30">
-                <Scan className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg shadow-indigo-500/25 ring-1 ring-purple-400/40 shrink-0 aspect-square bg-slate-900 flex items-center justify-center">
+                <img
+                  src="/src/assets/images/system_logo_1791437837470.jpg"
+                  alt="SISTEM PENANDAAN OMR"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
               </div>
               <div>
                 <h1 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-                  Penanda OMR Pintar
+                  SISTEM PENANDAAN OMR
                   <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-gradient-to-r from-blue-500/20 via-indigo-500/20 to-purple-500/20 text-purple-300 border border-purple-500/40 hidden xs:inline">
                     A4 AI
                   </span>

@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TeacherUser } from '../types';
-import { LogIn, ShieldCheck, School, ArrowRight, UserCheck, Camera, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { LogIn, ShieldCheck, School, ArrowRight, UserCheck, Camera, Sparkles } from 'lucide-react';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
@@ -8,29 +8,28 @@ interface GoogleAuthModalProps {
   defaultEmail?: string;
 }
 
-// Preset avatars for teachers with colorful backgrounds
-const PRESET_AVATARS = [
-  {
-    id: 'moe-educator-1',
-    label: 'Cikgu Rasmi MOE',
-    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'moe-educator-2',
-    label: 'Cikgu Lelaki',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'avatar-illust-1',
-    label: 'Avatar Digital',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMOE&backgroundColor=6366f1,a855f7',
-  },
-  {
-    id: 'avatar-illust-2',
-    label: 'Avatar Ceria',
-    url: 'https://api.dicebear.com/7.x/micah/svg?seed=TeacherDELIMa&backgroundColor=3b82f6,8b5cf6',
-  },
-];
+// Generate an authentic account profile avatar based on the account details
+export const getAccountProfileAvatar = (email: string, name?: string): string => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const saved = localStorage.getItem(`omr_account_avatar_${email}`);
+    if (saved) return saved;
+  }
+  const cleanName = name ? name.replace(/^Cikgu\s*/i, '').trim() : '';
+  const initial = (cleanName || email.replace(/@.*/, '') || 'G').charAt(0).toUpperCase();
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+    <defs>
+      <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="%232563eb"/>
+        <stop offset="50%" stop-color="%234f46e5"/>
+        <stop offset="100%" stop-color="%239333ea"/>
+      </linearGradient>
+    </defs>
+    <rect width="128" height="128" rx="64" fill="url(#bgGrad)"/>
+    <text x="64" y="74" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="54" font-weight="700" fill="%23ffffff" text-anchor="middle" dominant-baseline="central">${initial}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
 
 export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   isOpen,
@@ -39,14 +38,25 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 }) => {
   const [selectedEmail, setSelectedEmail] = useState(defaultEmail);
   const [teacherName, setTeacherName] = useState('Cikgu (Akaun Guru MOE)');
-  const [schoolName, setSchoolName] = useState('SMK BANDAR UTAMA DAMANSARA');
-  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string>(PRESET_AVATARS[0].url);
+  // DO NOT pre-fill school name, leave empty so only placeholder is shown
+  const [schoolName, setSchoolName] = useState('');
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string>(() =>
+    getAccountProfileAvatar(defaultEmail, 'Cikgu (Akaun Guru MOE)')
+  );
   const [isCustomEmail, setIsCustomEmail] = useState(false);
+  const [hasCustomUpload, setHasCustomUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Sync account avatar automatically when email or name changes if no custom file upload
+  useEffect(() => {
+    if (!hasCustomUpload) {
+      setSelectedAvatarUrl(getAccountProfileAvatar(selectedEmail, teacherName));
+    }
+  }, [selectedEmail, teacherName, hasCustomUpload]);
 
   if (!isOpen) return null;
 
-  // Handle custom photo upload
+  // Handle custom photo upload directly from user's account/camera/device
   const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -54,6 +64,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setSelectedAvatarUrl(reader.result);
+        setHasCustomUpload(true);
+        try {
+          localStorage.setItem(`omr_account_avatar_${selectedEmail}`, reader.result);
+        } catch {
+          // ignore storage quota error
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -64,7 +80,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
       id: `google-${selectedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
       name: teacherName,
       email: selectedEmail,
-      schoolName,
+      schoolName: schoolName.trim() || 'SMK JENERI',
       avatarUrl: selectedAvatarUrl,
     };
     onLogin(user);
@@ -78,34 +94,22 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
           {/* Ambient colorful glow */}
           <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-48 bg-purple-600/20 blur-3xl rounded-full pointer-events-none" />
 
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-3 text-white ring-2 ring-purple-400/30">
-            <svg className="w-8 h-8" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl shadow-indigo-500/30 mb-3 ring-2 ring-purple-400/40 aspect-square bg-slate-900 flex items-center justify-center">
+            <img
+              src="/src/assets/images/system_logo_1791437837470.jpg"
+              alt="SISTEM PENANDAAN OMR"
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-1.5">
-            Log Masuk Akaun Guru
+          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-1.5">
+            SISTEM PENANDAAN OMR
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-purple-300 border border-purple-500/30">
               DELIMa
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-1 max-w-xs">
-            Log masuk dengan akaun Google rasmi anda. Gambar akaun dan rekod penandaan akan disimpan khusus untuk anda.
+            Log masuk dengan akaun Google rasmi anda untuk mula menanda kertas OMR secara pintar.
           </p>
         </div>
 
@@ -130,12 +134,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               }`}
             >
               <div className="flex items-center gap-3">
-                {/* Account Avatar Image */}
+                {/* Account Avatar Image (strictly from user account) */}
                 <div className="relative">
                   <img
                     src={selectedAvatarUrl}
                     alt="Gambar Akaun"
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-500/60 shadow-md"
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-500/60 shadow-md bg-slate-800"
                   />
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900" />
                 </div>
@@ -153,52 +157,28 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               )}
             </div>
 
-            {/* Profile Avatar Selection Bar */}
-            <div className="mt-1 pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-400 font-medium flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-purple-400" />
-                  Pilih / Muat Naik Gambar Akaun:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
-                >
-                  <Camera className="w-3 h-3" />
-                  Foto Sendiri
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarFileUpload}
-                  className="hidden"
-                />
+            {/* Profile Avatar Bar - Uses Account Profile Picture directly */}
+            <div className="mt-1 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-400 font-medium">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Gambar Profil Akaun Dikesan</span>
               </div>
-
-              {/* Preset avatar circles */}
-              <div className="flex items-center gap-2">
-                {PRESET_AVATARS.map((av) => (
-                  <button
-                    key={av.id}
-                    type="button"
-                    onClick={() => setSelectedAvatarUrl(av.url)}
-                    className={`relative rounded-full p-0.5 transition ${
-                      selectedAvatarUrl === av.url
-                        ? 'ring-2 ring-purple-400 scale-105 shadow-md shadow-purple-500/40'
-                        : 'opacity-70 hover:opacity-100'
-                    }`}
-                    title={av.label}
-                  >
-                    <img
-                      src={av.url}
-                      alt={av.label}
-                      className="w-7 h-7 rounded-full object-cover"
-                    />
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 transition"
+                title="Muat naik foto peribadi jika ingin tukar gambar akaun"
+              >
+                <Camera className="w-3 h-3" />
+                <span>Tukar Foto Akaun</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileUpload}
+                className="hidden"
+              />
             </div>
 
             {/* Option to use custom Google email */}
@@ -239,7 +219,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             )}
           </div>
 
-          {/* School Name (Optional) */}
+          {/* School Name (Not pre-filled, only shows placeholder example SMK JENERI) */}
           <div>
             <label className="block text-slate-400 mb-1 font-semibold flex items-center gap-1.5">
               <School className="w-3.5 h-3.5 text-purple-400" />
@@ -249,7 +229,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               type="text"
               value={schoolName}
               onChange={(e) => setSchoolName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 uppercase font-semibold text-xs focus:outline-none focus:border-purple-500"
+              placeholder="SMK JENERI"
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 uppercase font-semibold text-xs focus:outline-none focus:border-purple-500 placeholder:text-slate-500 placeholder:font-normal placeholder:normal-case"
             />
           </div>
 

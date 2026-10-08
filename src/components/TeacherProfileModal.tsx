@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { TeacherUser } from '../types';
-import { X, Camera, Sparkles, School, Mail, LogOut, Check, UserCheck, ShieldCheck } from 'lucide-react';
+import { X, Camera, Sparkles, School, Mail, LogOut, Check } from 'lucide-react';
+import { getAccountProfileAvatar } from './GoogleAuthModal';
 
 interface TeacherProfileModalProps {
   isOpen: boolean;
@@ -10,29 +11,6 @@ interface TeacherProfileModalProps {
   onLogout: () => void;
 }
 
-const PRESET_AVATARS = [
-  {
-    id: 'moe-1',
-    label: 'Cikgu Rasmi MOE',
-    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'moe-2',
-    label: 'Cikgu Lelaki',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'illust-1',
-    label: 'Avatar Digital',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMOE&backgroundColor=6366f1,a855f7',
-  },
-  {
-    id: 'illust-2',
-    label: 'Avatar Ceria',
-    url: 'https://api.dicebear.com/7.x/micah/svg?seed=TeacherDELIMa&backgroundColor=3b82f6,8b5cf6',
-  },
-];
-
 export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   isOpen,
   onClose,
@@ -41,8 +19,10 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   onLogout,
 }) => {
   const [name, setName] = useState(currentUser.name);
-  const [schoolName, setSchoolName] = useState(currentUser.schoolName || 'SMK BANDAR UTAMA DAMANSARA');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || PRESET_AVATARS[0].url);
+  const [schoolName, setSchoolName] = useState(currentUser.schoolName || '');
+  const [avatarUrl, setAvatarUrl] = useState(
+    currentUser.avatarUrl || getAccountProfileAvatar(currentUser.email, currentUser.name)
+  );
   const [savedFeedback, setSavedFeedback] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -55,6 +35,11 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setAvatarUrl(reader.result);
+        try {
+          localStorage.setItem(`omr_account_avatar_${currentUser.email}`, reader.result);
+        } catch {
+          // ignore storage quota error
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -64,7 +49,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
     const updated: TeacherUser = {
       ...currentUser,
       name,
-      schoolName,
+      schoolName: schoolName.trim() || 'SMK JENERI',
       avatarUrl,
     };
     onUpdateUser(updated);
@@ -81,8 +66,13 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
         {/* Header with colorful blue-to-purple gradient */}
         <div className="p-5 bg-gradient-to-r from-blue-900/60 via-indigo-900/60 to-purple-900/60 border-b border-indigo-500/30 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md">
-              <UserCheck className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-md ring-1 ring-purple-400/40 aspect-square bg-slate-900 shrink-0 flex items-center justify-center">
+              <img
+                src="/src/assets/images/system_logo_1791437837470.jpg"
+                alt="SISTEM PENANDAAN OMR"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-tight">Profil Akaun Guru</h3>
@@ -128,29 +118,11 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-[11px] font-bold text-purple-300 hover:text-purple-200 flex items-center gap-1.5 mb-2 transition"
+              className="text-[11px] font-bold text-purple-300 hover:text-purple-200 flex items-center gap-1.5 transition"
             >
               <Camera className="w-3.5 h-3.5" />
-              <span>Muat Naik Foto Dari Galeri / Kamera</span>
+              <span>Muat Naik / Tukar Foto Akaun Sendiri</span>
             </button>
-
-            {/* Quick Presets */}
-            <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80 w-full justify-center">
-              <span className="text-[10px] text-slate-400 font-medium mr-1">Atau pilih avatar:</span>
-              {PRESET_AVATARS.map((av) => (
-                <button
-                  key={av.id}
-                  type="button"
-                  onClick={() => setAvatarUrl(av.url)}
-                  className={`rounded-full p-0.5 transition ${
-                    avatarUrl === av.url ? 'ring-2 ring-purple-400 scale-110' : 'opacity-60 hover:opacity-100'
-                  }`}
-                  title={av.label}
-                >
-                  <img src={av.url} alt={av.label} className="w-6 h-6 rounded-full object-cover" />
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Form details */}
@@ -187,7 +159,8 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                 type="text"
                 value={schoolName}
                 onChange={(e) => setSchoolName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 focus:border-purple-500 rounded-lg text-white font-medium text-xs uppercase focus:outline-none"
+                placeholder="SMK JENERI"
+                className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 focus:border-purple-500 rounded-lg text-white font-medium text-xs uppercase focus:outline-none placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal"
               />
             </div>
           </div>
