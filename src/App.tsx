@@ -376,22 +376,32 @@ export default function App() {
     }
   };
 
-  // Handle Camera Capture
-  const handleCameraCapture = async (imageDataUrl: string) => {
+  // Handle Camera Capture with automatic 6-point alignment grading
+  const handleCameraCapture = async (imageDataUrl: string, autoGrade: boolean = false) => {
+    let finalImage = imageDataUrl;
     try {
-      const optimized = await optimizeImageForOMR(imageDataUrl);
-      setSelectedImage(optimized);
+      finalImage = await optimizeImageForOMR(imageDataUrl);
+      setSelectedImage(finalImage);
     } catch (e) {
       setSelectedImage(imageDataUrl);
     }
     setImageName(`Imbasan_Kamera_${new Date().toLocaleTimeString('ms-MY')}.jpg`);
     setGradingResult(null);
     setErrorMsg(null);
+
+    // Auto-grade immediately if all 6 points were aligned and locked
+    if (autoGrade) {
+      setTimeout(() => {
+        handleGradeOMR(finalImage);
+      }, 50);
+    }
   };
 
   // Run 6-Point Fiducial OMR Optical Engine + AI Strictly for Student Name OCR
-  const handleGradeOMR = async () => {
-    if (!selectedImage) {
+  const handleGradeOMR = async (imageOverride?: unknown) => {
+    const overrideUrl = typeof imageOverride === 'string' ? imageOverride : undefined;
+    const targetImage = overrideUrl || selectedImage;
+    if (!targetImage) {
       setErrorMsg('Sila tangkap gambar atau pilih fail kertas jawapan terlebih dahulu.');
       return;
     }
@@ -400,11 +410,11 @@ export default function App() {
     setErrorMsg(null);
 
     try {
-      setProcessingStep('1/3: Mengesan 6 titik kotak penjuru fiducial kertas...');
-      await new Promise((r) => setTimeout(r, 120));
+      setProcessingStep('1/3: Menyelaras 6 titik panduan fiducial kertas...');
+      await new Promise((r) => setTimeout(r, 100));
 
       // 1. Load image onto high-speed processing canvas
-      const img = await loadImage(selectedImage);
+      const img = await loadImage(targetImage);
       const procCanvas = document.createElement('canvas');
       procCanvas.width = img.width;
       procCanvas.height = img.height;
@@ -415,10 +425,10 @@ export default function App() {
       // 2. Detect 6 fiducial points (Top-L, Top-R, Mid-L, Mid-R, Bot-L, Bot-R)
       const markers = findSixFiducialMarkers(ctx, img.width, img.height);
 
-      setProcessingStep('2/3: Menanda jawapan objektif menggunakan 6 titik penjuru...');
-      await new Promise((r) => setTimeout(r, 150));
+      setProcessingStep('2/3: Menanda jawapan objektif menggunakan 6 titik panduan...');
+      await new Promise((r) => setTimeout(r, 120));
 
-      // 3. Ultra-accurate, instant local optical mark scoring using 6 fiducial points (Zero AI hallucination for marks)
+      // 3. Piecewise Bi-Linear 6-point optical registration & fine-tuning
       const localResult = processOMRGridAnswers(
         procCanvas,
         answerKey,
@@ -429,7 +439,7 @@ export default function App() {
       );
 
       // 4. Crop exclusively the student name box for AI OCR
-      setProcessingStep('3/3: AI mengecam nama pelajar sahaja...');
+      setProcessingStep('3/3: AI mengecam nama pelajar...');
       let studentName = 'MURID TANPA NAMA';
 
       const croppedNameDataUrl = cropStudentNameBoxDataUrl(procCanvas, markers);
@@ -439,7 +449,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            imageBase64: croppedNameDataUrl || selectedImage,
+            imageBase64: croppedNameDataUrl || targetImage,
             mimeType: 'image/jpeg',
           }),
         });
@@ -461,7 +471,7 @@ export default function App() {
 
       setGradingResult(localResult as OMRGradingResponse);
       if (activeClassId) {
-        saveResultToClassFolder(localResult as OMRGradingResponse, selectedImage, activeClassId);
+        saveResultToClassFolder(localResult as OMRGradingResponse, targetImage, activeClassId);
       }
     } catch (err: any) {
       console.error('Grading error:', err);
@@ -484,7 +494,7 @@ export default function App() {
         if (resData.success && resData.data) {
           setGradingResult(resData.data);
           if (activeClassId) {
-            saveResultToClassFolder(resData.data, selectedImage, activeClassId);
+            saveResultToClassFolder(resData.data, targetImage, activeClassId);
           }
         } else {
           setErrorMsg(resData.error || 'Ralat berlaku semasa menganalisis kertas OMR.');
@@ -1074,7 +1084,7 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onLogin={handleLogin}
         onClose={currentUser ? () => setIsAuthModalOpen(false) : undefined}
-        defaultEmail="g-75557213@moe-dl.edu.my"
+        defaultEmail={localStorage.getItem('omr_teacher_saved_email') || currentUser?.email || ''}
       />
 
       {/* Teacher Profile Modal (Shows Account Picture & Settings) */}

@@ -66,11 +66,88 @@ export const getGoogleAccountAvatar = (email: string, name?: string): string => 
 };
 
 /**
- * Perform Google Sign In popup with Firebase Auth
+ * Attempt Google Sign-In via Google Identity Services (GIS) OAuth
+ */
+const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) {
+      resolve(null);
+      return;
+    }
+
+    try {
+      const clientId =
+        (firebaseConfig as any).oAuthClientId ||
+        '463789169260-b9nh72q3hsd33j4r29asu5pu86807qbi.apps.googleusercontent.com';
+
+      const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        prompt: 'select_account',
+        callback: async (tokenResponse: any) => {
+          if (!tokenResponse || !tokenResponse.access_token) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            });
+            const profile = await resp.json();
+            const email = profile.email || '';
+            const displayName =
+              profile.name || (email ? `Cikgu (${email.split('@')[0]})` : 'Cikgu');
+            const photoURL =
+              profile.picture || getGoogleAccountAvatar(email, displayName);
+
+            cachedAccessToken = tokenResponse.access_token;
+
+            if (photoURL && typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`omr_account_avatar_${email}`, photoURL);
+              } catch {
+                // ignore
+              }
+            }
+
+            resolve({
+              email,
+              displayName,
+              photoURL,
+              accessToken: tokenResponse.access_token,
+              user: { email, displayName, photoURL } as User,
+            });
+          } catch {
+            resolve(null);
+          }
+        },
+        error_callback: () => {
+          resolve(null);
+        },
+      });
+
+      tokenClient.requestAccessToken();
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+/**
+ * Perform Google Sign In popup with GIS or Firebase Auth
  */
 export const signInWithGoogle = async (): Promise<GoogleAuthResult> => {
   try {
     isSigningIn = true;
+
+    // 1. Try Google Identity Services first (GIS is officially configured for this app's OAuth client)
+    const gisResult = await signInWithGoogleIdentityServices();
+    if (gisResult && gisResult.email) {
+      return gisResult;
+    }
+
+    // 2. Fallback to Firebase Popup
     const result = await signInWithPopup(auth, googleProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     const accessToken = credential?.accessToken || '';

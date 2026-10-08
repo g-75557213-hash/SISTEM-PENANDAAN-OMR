@@ -1,6 +1,7 @@
 // High-Speed Computer Vision OMR Optical Grid Engine (6 Fiducial Points)
-// Pure geometric & mathematical mark recognition without relying on AI for answers.
-// AI is strictly isolated for student name OCR recognition only.
+// Piecewise Bi-Linear Registration & Optical Mark Recognition across 6 Corner Guide Markers.
+// Pure geometric and mathematical mark recognition with millimeter accuracy.
+// AI is used for Student Name OCR and intelligent secondary verification when needed.
 
 export interface Point2D {
   x: number;
@@ -14,6 +15,7 @@ export interface MarkerSquare {
   h: number;
   cx: number;
   cy: number;
+  found: boolean;
 }
 
 export interface SixCornerMarkers {
@@ -23,6 +25,8 @@ export interface SixCornerMarkers {
   midRight: MarkerSquare;
   botLeft: MarkerSquare;
   botRight: MarkerSquare;
+  allFound: boolean;
+  foundCount: number;
 }
 
 export interface QuestionDetectedAnswer {
@@ -92,12 +96,12 @@ export function findSixFiducialMarkers(
 
     // Search zones for the 6 markers:
     const zones = {
-      topLeft: { x1: 0, x2: Math.floor(width * 0.22), y1: 0, y2: Math.floor(height * 0.25) },
-      topRight: { x1: Math.floor(width * 0.78), x2: width, y1: 0, y2: Math.floor(height * 0.25) },
-      midLeft: { x1: 0, x2: Math.floor(width * 0.22), y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
-      midRight: { x1: Math.floor(width * 0.78), x2: width, y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
-      botLeft: { x1: 0, x2: Math.floor(width * 0.22), y1: Math.floor(height * 0.75), y2: height },
-      botRight: { x1: Math.floor(width * 0.78), x2: width, y1: Math.floor(height * 0.75), y2: height },
+      topLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: 0, y2: Math.floor(height * 0.28) },
+      topRight: { x1: Math.floor(width * 0.75), x2: width, y1: 0, y2: Math.floor(height * 0.28) },
+      midLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: Math.floor(height * 0.35), y2: Math.floor(height * 0.65) },
+      midRight: { x1: Math.floor(width * 0.75), x2: width, y1: Math.floor(height * 0.35), y2: Math.floor(height * 0.65) },
+      botLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: Math.floor(height * 0.72), y2: height },
+      botRight: { x1: Math.floor(width * 0.75), x2: width, y1: Math.floor(height * 0.72), y2: height },
     };
 
     const findDarkSquareInZone = (zone: { x1: number; x2: number; y1: number; y2: number }): MarkerSquare => {
@@ -111,8 +115,8 @@ export function findSixFiducialMarkers(
         }
       }
 
-      // If darkest pixels are found, threshold around darkest cluster
-      const threshold = Math.min(120, Math.max(50, minBrightness + 40));
+      // Adaptive threshold: must be significantly darker than background paper
+      const threshold = Math.min(130, Math.max(50, minBrightness + 45));
 
       let sumX = 0;
       let sumY = 0;
@@ -138,20 +142,26 @@ export function findSixFiducialMarkers(
         }
       }
 
-      if (count > 20 && maxX > minX && maxY > minY) {
+      const w = maxX > minX ? maxX - minX : 34;
+      const h = maxY > minY ? maxY - minY : 34;
+      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h));
+      const isDetected = count >= 16 && aspect <= 3.2 && minBrightness < 140;
+
+      if (count > 16 && maxX > minX && maxY > minY) {
         const cx = Math.round(sumX / count);
         const cy = Math.round(sumY / count);
         return {
           x: minX,
           y: minY,
-          w: maxX - minX,
-          h: maxY - minY,
+          w,
+          h,
           cx,
           cy,
+          found: isDetected,
         };
       }
 
-      // Fallback default coordinate for 1240x1754 template scale
+      // Fallback coordinate for 1240x1754 template scale
       const defaultCx = (zone.x1 + zone.x2) / 2;
       const defaultCy = (zone.y1 + zone.y2) / 2;
       return {
@@ -161,16 +171,28 @@ export function findSixFiducialMarkers(
         h: 34,
         cx: defaultCx,
         cy: defaultCy,
+        found: false,
       };
     };
 
+    const tl = findDarkSquareInZone(zones.topLeft);
+    const tr = findDarkSquareInZone(zones.topRight);
+    const ml = findDarkSquareInZone(zones.midLeft);
+    const mr = findDarkSquareInZone(zones.midRight);
+    const bl = findDarkSquareInZone(zones.botLeft);
+    const br = findDarkSquareInZone(zones.botRight);
+
+    const foundCount = [tl, tr, ml, mr, bl, br].filter((m) => m.found).length;
+
     return {
-      topLeft: findDarkSquareInZone(zones.topLeft),
-      topRight: findDarkSquareInZone(zones.topRight),
-      midLeft: findDarkSquareInZone(zones.midLeft),
-      midRight: findDarkSquareInZone(zones.midRight),
-      botLeft: findDarkSquareInZone(zones.botLeft),
-      botRight: findDarkSquareInZone(zones.botRight),
+      topLeft: tl,
+      topRight: tr,
+      midLeft: ml,
+      midRight: mr,
+      botLeft: bl,
+      botRight: br,
+      allFound: foundCount === 6,
+      foundCount,
     };
   } catch (e) {
     console.warn('Fiducial marker detection exception:', e);
@@ -180,7 +202,6 @@ export function findSixFiducialMarkers(
 
 /**
  * Crop the Student Name (NAMA) box area from the canvas to send exclusively to AI OCR.
- * Minimizes tokens, maximizes speed (< 600ms response), and ensures 100% data privacy.
  */
 export function cropStudentNameBoxDataUrl(
   canvas: HTMLCanvasElement,
@@ -197,9 +218,9 @@ export function cropStudentNameBoxDataUrl(
 
     if (markers) {
       cropX = Math.round(markers.topLeft.cx + markers.topLeft.w * 0.5);
-      cropY = Math.round(markers.topLeft.cy - 10);
+      cropY = Math.max(0, Math.round(markers.topLeft.cy - 12));
       cropW = Math.round(markers.topRight.cx - cropX);
-      cropH = Math.round(h * 0.085);
+      cropH = Math.round(h * 0.088);
     }
 
     const cropCanvas = document.createElement('canvas');
@@ -228,9 +249,8 @@ export function cropStudentNameBoxDataUrl(
 }
 
 /**
- * Core Algorithm: Optical Mark Recognition using 6 corner fiducial registration.
- * Accurately samples pencil darkness for options A, B, C, D (and E) across all questions,
- * mathematically calibrated against the reference template layout.
+ * Core Algorithm: Optical Mark Recognition using Piecewise Bi-Linear 6-Point Registration.
+ * Accurately tracks every target row and bubble by warping coordinate space across the 6 fiducial points.
  */
 export function processOMRGridAnswers(
   canvas: HTMLCanvasElement,
@@ -251,41 +271,59 @@ export function processOMRGridAnswers(
   const data = imgData.data;
 
   // 1. Reference Template Geometry (1240 x 1754 px @ 150 DPI)
-  // Matching omrCanvasDrawer.ts exactly:
-  // Top markers: x=40, y=145, size=34 -> cx = 57, cy = 162
-  // Right markers: x=1240-40-34 = 1166 -> cx = 1183
-  // Bottom markers: y=1754-40-34-20 = 1660 -> cy = 1677
+  // Exact coordinate map matching omrCanvasDrawer.ts
   const REF_W = 1240;
   const REF_H = 1754;
+  const REF_TOP_Y = 162;
+  const REF_MID_Y = 877;
+  const REF_BOT_Y = 1677;
   const REF_LEFT_X = 57;
   const REF_RIGHT_X = 1183;
-  const REF_TOP_Y = 162;
-  const REF_BOT_Y = 1677;
 
-  // Actual marker positions detected
-  let detLeftX = REF_LEFT_X * (width / REF_W);
-  let detRightX = REF_RIGHT_X * (width / REF_W);
-  let detTopY = REF_TOP_Y * (height / REF_H);
-  let detBotY = REF_BOT_Y * (height / REF_H);
+  /**
+   * Piecewise quadrilateral coordinate mapping:
+   * Maps any reference point (refX, refY) into the actual image coordinates (imgX, imgY)
+   * by interpolating through Top, Middle, and Bottom fiducial anchors.
+   */
+  const mapPoint = (refX: number, refY: number): { x: number; y: number } => {
+    if (!markers) {
+      return {
+        x: (refX / REF_W) * width,
+        y: (refY / REF_H) * height,
+      };
+    }
 
-  if (markers) {
-    detLeftX = (markers.topLeft.cx + markers.midLeft.cx + markers.botLeft.cx) / 3;
-    detRightX = (markers.topRight.cx + markers.midRight.cx + markers.botRight.cx) / 3;
-    detTopY = (markers.topLeft.cy + markers.topRight.cy) / 2;
-    detBotY = (markers.botLeft.cy + markers.botRight.cy) / 2;
-  }
+    const { topLeft: tl, topRight: tr, midLeft: ml, midRight: mr, botLeft: bl, botRight: br } = markers;
 
-  // Scale and Origin Mapping from reference space to actual image space
-  let scaleX = (detRightX - detLeftX) / (REF_RIGHT_X - REF_LEFT_X);
-  let scaleY = (detBotY - detTopY) / (REF_BOT_Y - REF_TOP_Y);
+    // Horizontal ratio between left and right marker lines (0 = left, 1 = right)
+    const u = Math.max(0, Math.min(1, (refX - REF_LEFT_X) / (REF_RIGHT_X - REF_LEFT_X)));
 
-  if (scaleX <= 0.1 || isNaN(scaleX)) scaleX = width / REF_W;
-  if (scaleY <= 0.1 || isNaN(scaleY)) scaleY = height / REF_H;
+    let leftX: number, leftY: number;
+    let rightX: number, rightY: number;
 
-  const originX = detLeftX - REF_LEFT_X * scaleX;
-  const originY = detTopY - REF_TOP_Y * scaleY;
+    if (refY <= REF_MID_Y) {
+      // Upper section: interpolate between Top pair and Middle pair
+      const v = Math.max(0, Math.min(1, (refY - REF_TOP_Y) / (REF_MID_Y - REF_TOP_Y)));
+      leftX = tl.cx * (1 - v) + ml.cx * v;
+      leftY = tl.cy * (1 - v) + ml.cy * v;
+      rightX = tr.cx * (1 - v) + mr.cx * v;
+      rightY = tr.cy * (1 - v) + mr.cy * v;
+    } else {
+      // Lower section: interpolate between Middle pair and Bottom pair
+      const v = Math.max(0, Math.min(1, (refY - REF_MID_Y) / (REF_BOT_Y - REF_MID_Y)));
+      leftX = ml.cx * (1 - v) + bl.cx * v;
+      leftY = ml.cy * (1 - v) + bl.cy * v;
+      rightX = mr.cx * (1 - v) + br.cx * v;
+      rightY = mr.cy * (1 - v) + br.cy * v;
+    }
 
-  // Dynamic column layout (IDENTICAL logic to omrCanvasDrawer.ts)
+    const mappedX = leftX * (1 - u) + rightX * u;
+    const mappedY = leftY * (1 - u) + rightY * u;
+
+    return { x: mappedX, y: mappedY };
+  };
+
+  // Dynamic column layout
   let numColumns = 2;
   if (totalQuestions <= 20) {
     numColumns = 2;
@@ -317,8 +355,8 @@ export function processOMRGridAnswers(
   const refBubbleSpacing = Math.floor(refBubblesAreaWidth / optionsList.length);
 
   /**
-   * Helper to sample the INNER CORE of a bubble (radius * 0.70)
-   * This completely avoids the printed outer ring border so only shaded graphite/ink is measured!
+   * Helper to sample the INNER CORE of a bubble (radius * 0.68)
+   * Ignores printed bubble border, measures pure graphite/ink.
    */
   const getBubbleCoreMetrics = (
     centerX: number,
@@ -329,8 +367,7 @@ export function processOMRGridAnswers(
     let darkPixels = 0;
     let totalSamples = 0;
     let brightnessSum = 0;
-    // Core radius is 70% of bubble radius to prevent edge border noise
-    const coreRadius = Math.max(3, radius * 0.70);
+    const coreRadius = Math.max(3, radius * 0.68);
     const rInt = Math.ceil(coreRadius);
 
     for (let dy = -rInt; dy <= rInt; dy++) {
@@ -346,8 +383,8 @@ export function processOMRGridAnswers(
             const brightness = (r * 299 + g * 587 + b * 114) / 1000;
             brightnessSum += brightness;
 
-            // A shaded bubble has significant drop below baseline paper brightness
-            if (brightness < Math.min(150, baselineBrightness * 0.78)) {
+            // Threshold significantly below local paper background
+            if (brightness < Math.min(155, baselineBrightness * 0.78)) {
               darkPixels++;
             }
             totalSamples++;
@@ -361,7 +398,6 @@ export function processOMRGridAnswers(
     const fillRatio = darkPixels / totalSamples;
     const avgBrightness = brightnessSum / totalSamples;
     const relativeDarkness = Math.max(0, (baselineBrightness - avgBrightness) / Math.max(1, baselineBrightness));
-    // Combined optical score
     const score = fillRatio * 0.65 + relativeDarkness * 0.35;
 
     return { fillRatio, avgBrightness, score };
@@ -380,28 +416,61 @@ export function processOMRGridAnswers(
     const refCenterY = refRowY + refRowHeight / 2;
     const refBubblesStartX = refColX + refQNumWidth + 12;
 
-    // Actual image coordinates
-    const actualCenterY = originY + refCenterY * scaleY;
-    const actualRowY = originY + refRowY * scaleY;
-    const actualRowHeight = refRowHeight * scaleY;
-    const actualColX = originX + refColX * scaleX;
-    const actualColWidth = refColumnWidth * scaleX;
-    const actualBubbleRadius = refBubbleRadius * Math.min(scaleX, scaleY);
+    // Piecewise mapped row center
+    const mappedRowCenter = mapPoint(refColX + refColumnWidth / 2, refCenterY);
+    const mappedColStart = mapPoint(refColX, refRowY);
+    const mappedColEnd = mapPoint(refColX + refColumnWidth, refRowY + refRowHeight);
 
-    // Measure local paper baseline brightness around the row (between question number and bubbles)
-    let baselineBrightnessSum = 0;
+    // Row Center Fine-Tuning: Search +/- 4px for peak horizontal contrast
+    let bestDy = 0;
+    let maxContrast = -1;
+    for (let dy = -4; dy <= 4; dy += 2) {
+      const checkY = Math.round(mappedRowCenter.y + dy);
+      if (checkY >= 0 && checkY < height) {
+        // Measure variance across row span
+        let rowSum = 0;
+        let rowSqSum = 0;
+        let rowSamples = 0;
+        for (let step = 0; step < 10; step++) {
+          const sampleX = Math.round(mappedColStart.x + (step / 9) * (mappedColEnd.x - mappedColStart.x));
+          if (sampleX >= 0 && sampleX < width) {
+            const idx = (checkY * width + sampleX) * 4;
+            const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+            rowSum += b;
+            rowSqSum += b * b;
+            rowSamples++;
+          }
+        }
+        if (rowSamples > 0) {
+          const mean = rowSum / rowSamples;
+          const variance = rowSqSum / rowSamples - mean * mean;
+          if (variance > maxContrast) {
+            maxContrast = variance;
+            bestDy = dy;
+          }
+        }
+      }
+    }
+
+    const fineTunedCenterY = mappedRowCenter.y + bestDy;
+
+    // Local paper baseline measurement
+    const baselinePoint = mapPoint(refColX + refQNumWidth + 4, refCenterY);
+    let baselineSum = 0;
     let baselineCount = 0;
-    const baselineSampleX = originX + (refColX + refQNumWidth + 4) * scaleX;
     for (let dy = -3; dy <= 3; dy++) {
-      const py = Math.round(actualCenterY + dy);
-      const px = Math.round(baselineSampleX);
+      const py = Math.round(baselinePoint.y + dy);
+      const px = Math.round(baselinePoint.x);
       if (px >= 0 && px < width && py >= 0 && py < height) {
         const idx = (py * width + px) * 4;
-        baselineBrightnessSum += (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+        baselineSum += (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
         baselineCount++;
       }
     }
-    const rowBaselineBrightness = baselineCount > 0 ? baselineBrightnessSum / baselineCount : 220;
+    const rowBaselineBrightness = baselineCount > 0 ? baselineSum / baselineCount : 220;
+
+    const scaleFactor = Math.abs(mappedColEnd.x - mappedColStart.x) / refColumnWidth;
+    const actualBubbleRadius = Math.max(6, refBubbleRadius * scaleFactor);
 
     const scores: Record<string, number> = {};
     const fillRatios: Record<string, number> = {};
@@ -409,9 +478,14 @@ export function processOMRGridAnswers(
     for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
       const opt = optionsList[optIdx];
       const refBx = refBubblesStartX + optIdx * refBubbleSpacing + refBubbleSpacing / 2;
-      const actualBx = originX + refBx * scaleX;
+      const mappedBubble = mapPoint(refBx, refCenterY);
 
-      const metrics = getBubbleCoreMetrics(actualBx, actualCenterY, actualBubbleRadius, rowBaselineBrightness);
+      const metrics = getBubbleCoreMetrics(
+        mappedBubble.x,
+        fineTunedCenterY,
+        actualBubbleRadius,
+        rowBaselineBrightness
+      );
       scores[opt] = metrics.score;
       fillRatios[opt] = metrics.fillRatio;
     }
@@ -421,16 +495,14 @@ export function processOMRGridAnswers(
     const topOption = sortedOptions[0];
     const secondOption = sortedOptions[1];
 
-    // Safely retrieve correct answer from answerKey (supports number or string keys)
     const rawKey = answerKey[q] !== undefined ? answerKey[q] : answerKey[String(q) as any];
     const correctAns = (rawKey || 'A').toString().trim().toUpperCase();
 
     let studentAns = 'TIADA_JAWAPAN';
     let status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' = 'KOSONG';
 
-    // A marked bubble has high core fill / darkness score (>= 0.18)
-    const MARK_SCORE_THRESHOLD = 0.18;
-    const DOUBLE_MARK_RATIO = 0.80;
+    const MARK_SCORE_THRESHOLD = 0.16;
+    const DOUBLE_MARK_RATIO = 0.82;
 
     if (topOption[1] >= MARK_SCORE_THRESHOLD) {
       if (
@@ -438,7 +510,6 @@ export function processOMRGridAnswers(
         secondOption[1] >= MARK_SCORE_THRESHOLD &&
         secondOption[1] >= topOption[1] * DOUBLE_MARK_RATIO
       ) {
-        // Double mark / ambiguous
         studentAns = 'AMBIGU/DOUBLE_MARK';
         status = 'DOUBLE_MARK';
       } else {
@@ -451,7 +522,6 @@ export function processOMRGridAnswers(
         }
       }
     } else {
-      // Empty
       studentAns = 'TIADA_JAWAPAN';
       status = 'KOSONG';
     }
@@ -479,11 +549,10 @@ export function processOMRGridAnswers(
       teks_tambahan = `Dwi-Tanda (Betul: ${correctAns})`;
     }
 
-    // Box normalized to 0-1000 scale for viewer compatibility
-    const boxXmin = Math.round((actualColX / width) * 1000);
-    const boxXmax = Math.round(((actualColX + actualColWidth) / width) * 1000);
-    const boxYmin = Math.round((actualRowY / height) * 1000);
-    const boxYmax = Math.round(((actualRowY + actualRowHeight) / height) * 1000);
+    const boxXmin = Math.round((Math.min(mappedColStart.x, mappedColEnd.x) / width) * 1000);
+    const boxXmax = Math.round((Math.max(mappedColStart.x, mappedColEnd.x) / width) * 1000);
+    const boxYmin = Math.round(((fineTunedCenterY - actualBubbleRadius * 1.5) / height) * 1000);
+    const boxYmax = Math.round(((fineTunedCenterY + actualBubbleRadius * 1.5) / height) * 1000);
 
     detailList.push({
       nombor_soalan: q,
@@ -513,7 +582,7 @@ export function processOMRGridAnswers(
 
   return {
     ringkasan_keputusan: {
-      nama_pelajar: '', // To be filled by AI name OCR
+      nama_pelajar: '',
       jumlah_soalan: totalQuestions,
       jawapan_betul: correctCount,
       jawapan_salah: wrongCount,
@@ -527,7 +596,7 @@ export function processOMRGridAnswers(
       status_kelulusan: isCemerlang ? 'CEMERLANG' : isPassed ? 'LULUS' : 'GAGAL',
     },
     catatan_teknikal:
-      'Ditanda serta-merta menggunakan Enjin Geometrik 6 Titik Penjuru (Optical Grid Registration) berkepantasan tinggi',
+      'Ditanda menggunakan Enjin Optik Piecewise 6 Titik Penjuru (Bi-Linear Registration) berketepatan tinggi',
     markersFound: markers,
   };
 }

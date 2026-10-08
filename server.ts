@@ -40,6 +40,19 @@ function getAvailableGeminiApiKeys(): string[] {
   return Array.from(new Set(keys));
 }
 
+// Check status of configured Gemini API Keys on server (safe, no secret values exposed)
+app.get('/api/gemini-keys-status', (req, res) => {
+  const keys = getAvailableGeminiApiKeys();
+  res.json({
+    hasKey: keys.length > 0,
+    keyCount: keys.length,
+    message:
+      keys.length > 0
+        ? `${keys.length} Gemini API Key dikesan pada pelayan.`
+        : 'Tiada Gemini API Key dikesan dalam persekitaran pelayan (.env). Sistem menggunakan enjin optik tempatan 6 titik untuk menanda soalan.',
+  });
+});
+
 // API Endpoint for AI Student Name Recognition ONLY (OCR Nama Murid)
 // AI strictly used only for student name extraction, zero hallucination on answers
 app.post('/api/ocr-student-name', async (req, res) => {
