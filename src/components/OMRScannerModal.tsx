@@ -3,12 +3,13 @@ import {
   Camera,
   X,
   RefreshCw,
-  Crosshair,
   Target,
   Upload,
   CheckCircle2,
   Sparkles,
   Zap,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { optimizeImageForOMR } from '../utils/imageOptimizer';
 import { findSixFiducialMarkers } from '../utils/omrFiducialDetector';
@@ -47,6 +48,10 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
   const [isCapturing, setIsCapturing] = useState(false);
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
 
+  // Aspect ratio display mode: 'contain' ensures ZERO cropping so full A4 sheet is visible
+  // 'cover' fills the screen for users who prefer full viewfinder
+  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
+
   // Live 6-point detection states
   const [markersState, setMarkersState] = useState<MarkersDetectionState>({
     topLeft: false,
@@ -59,7 +64,6 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
   });
 
   const [stableConsecutiveFrames, setStableConsecutiveFrames] = useState(0);
-  const [autoCaptureCountdown, setAutoCaptureCountdown] = useState<number | null>(null);
 
   // Safe camera initialization
   async function initCamera() {
@@ -136,7 +140,7 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
     }
   };
 
-  // Real-time 6-point fiducial analysis loop
+  // Real-time 6-point fiducial analysis loop preserving exact video aspect ratio
   useEffect(() => {
     if (!isOpen || cameraError || !stream) {
       if (scanIntervalRef.current) {
@@ -148,8 +152,6 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
 
     if (!scanCanvasRef.current) {
       scanCanvasRef.current = document.createElement('canvas');
-      scanCanvasRef.current.width = 480;
-      scanCanvasRef.current.height = 360;
     }
 
     const checkInterval = window.setInterval(() => {
@@ -158,6 +160,20 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
       const video = videoRef.current;
       const canvas = scanCanvasRef.current;
       if (!canvas) return;
+
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 480;
+
+      // Maintain EXACT aspect ratio without squashing
+      const maxDim = 640;
+      const scale = Math.min(1, maxDim / Math.max(vw, vh));
+      const targetW = Math.max(240, Math.round(vw * scale));
+      const targetH = Math.max(240, Math.round(vh * scale));
+
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
 
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
@@ -186,7 +202,6 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
             const next = prev + 1;
             if (next >= 2) {
               // 2 consecutive stable frames (~400ms steady alignment) -> trigger automatic snap!
-              setAutoCaptureCountdown(0);
               setTimeout(() => {
                 handleSnap(true);
               }, 120);
@@ -195,7 +210,6 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
           });
         } else {
           setStableConsecutiveFrames(0);
-          setAutoCaptureCountdown(null);
         }
       }
     }, 200);
@@ -269,7 +283,7 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-between sm:justify-center sm:items-center p-0 sm:p-4 bg-black/95 backdrop-blur-md animate-fade-in">
-      <div className="bg-slate-900 sm:border sm:border-slate-800 sm:rounded-2xl w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] overflow-hidden shadow-2xl flex flex-col justify-between">
+      <div className="bg-slate-900 sm:border sm:border-slate-800 sm:rounded-2xl w-full max-w-4xl h-full sm:h-auto sm:max-h-[94vh] overflow-hidden shadow-2xl flex flex-col justify-between">
         {/* Hidden Native Camera & File Input */}
         <input
           ref={nativeCameraInputRef}
@@ -290,8 +304,8 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-xs sm:text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
                   Kamera Panduan 6 Titik Penjuru
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
-                    Auto-Semak
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold">
+                    Nisbah A4 Tepat
                   </span>
                 </h2>
                 <span className="text-[10px] font-mono bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded border border-blue-500/30 font-bold hidden xs:inline">
@@ -299,21 +313,44 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 truncate max-w-[240px] sm:max-w-none">
-                Sistem mengesan 6 titik guide pada kertas secara automatik untuk menyemak soalan
+                Bingkai sejajar mengikut nisbah tepat kertas A4 (1:1.41) untuk menyemak soalan secara automatik
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition shrink-0"
-            aria-label="Tutup Kamera"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Aspect Ratio / Fit Toggle */}
+            <button
+              type="button"
+              onClick={() => setCameraFitMode((prev) => (prev === 'contain' ? 'cover' : 'contain'))}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium border border-slate-700 flex items-center gap-1 transition"
+              title="Tukar antara Muat Penuh & Nisbah Bebas Potong"
+            >
+              {cameraFitMode === 'contain' ? (
+                <>
+                  <Maximize2 className="w-3 h-3 text-purple-400" />
+                  <span className="hidden sm:inline">Nisbah A4 (Penuh)</span>
+                </>
+              ) : (
+                <>
+                  <Minimize2 className="w-3 h-3 text-blue-400" />
+                  <span className="hidden sm:inline">Skrin Penuh</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition shrink-0"
+              aria-label="Tutup Kamera"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Viewfinder Area with Live Fiducial Alignment Tracking */}
-        <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[460px]">
+        <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[380px] sm:min-h-[500px]">
           {cameraError ? (
             /* Friendly Fallback View when WebRTC Permission is Denied */
             <div className="p-6 text-center max-w-md flex flex-col items-center">
@@ -351,111 +388,139 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
               </p>
             </div>
           ) : (
-            <>
+            <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+              {/* Camera Video Stream */}
               <video
                 ref={videoRef}
                 playsInline
                 muted
-                className="w-full h-full object-cover"
+                className={`w-full h-full transition-all duration-300 ${
+                  cameraFitMode === 'contain' ? 'object-contain' : 'object-cover'
+                }`}
               />
 
               {/* Shutter Flash Animation when capturing */}
               {isCapturing && (
-                <div className="absolute inset-0 bg-white/40 animate-pulse z-30 pointer-events-none" />
+                <div className="absolute inset-0 bg-white/50 animate-pulse z-40 pointer-events-none" />
               )}
 
-              {/* 6 Point Optical Alignment Overlay */}
-              <div
-                className={`absolute inset-3 sm:inset-6 border-2 rounded-xl pointer-events-none flex flex-col justify-between p-2 select-none transition-all duration-300 ${
-                  isAllSixAligned
-                    ? 'border-emerald-400 shadow-[inset_0_0_24px_rgba(16,185,129,0.3)] bg-emerald-500/5'
-                    : 'border-dashed border-purple-400/50'
-                }`}
-              >
-                {/* 1. TOP ROW MARKERS */}
-                <div className="flex justify-between items-start">
-                  {/* Top-Left Fiducial Target */}
-                  <div className="flex flex-col items-start gap-1">
-                    <div
-                      className={`w-10 h-10 sm:w-12 sm:h-12 border-t-4 border-l-4 rounded-tl flex items-center justify-center shadow-md transition-all duration-200 ${
-                        markersState.topLeft
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
-                      }`}
-                    >
-                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
-                    </div>
-                    <span
-                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded flex items-center gap-0.5 ${
-                        markersState.topLeft
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
-                          : 'bg-black/80 text-yellow-300'
-                      }`}
-                    >
-                      {markersState.topLeft ? '✔ ATAS KIRI' : '1. ATAS KIRI'}
-                    </span>
-                  </div>
-
-                  {/* Top Center Guide Banner with Live Counter */}
-                  <div
-                    className={`backdrop-blur px-3 sm:px-4 py-1.5 rounded-full border text-center shadow-lg transition-all duration-300 flex items-center gap-2 ${
-                      isAllSixAligned
-                        ? 'bg-emerald-950/90 border-emerald-400 text-emerald-200 animate-pulse'
-                        : 'bg-slate-950/90 border-purple-400/60 text-purple-200'
+              {/* Top Center Live Alignment Status Banner */}
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                <div
+                  className={`backdrop-blur-md px-3.5 py-1.5 rounded-full border text-center shadow-xl transition-all duration-300 flex items-center gap-2 ${
+                    isAllSixAligned
+                      ? 'bg-emerald-950/90 border-emerald-400 text-emerald-200 ring-2 ring-emerald-500/40 animate-pulse'
+                      : 'bg-slate-950/85 border-purple-400/60 text-purple-200'
+                  }`}
+                >
+                  <Target
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isAllSixAligned ? 'text-emerald-400 animate-spin' : 'text-purple-400'
                     }`}
-                  >
-                    <Target
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        isAllSixAligned ? 'text-emerald-400 animate-spin' : 'text-purple-400'
-                      }`}
-                    />
-                    <span className="text-[10px] sm:text-xs font-bold tracking-wide">
-                      {isAllSixAligned
-                        ? '6/6 TITIK SEJAJAR! MENYEMAK AUTOMATIK...'
-                        : `${markersState.count}/6 Titik Dikesan — Sejajarkan Kertas`}
+                  />
+                  <span className="text-[10px] sm:text-xs font-bold tracking-wide">
+                    {isAllSixAligned
+                      ? '6/6 TITIK TEPAT SEJAJAR! MENYEMAK AUTOMATIK...'
+                      : `${markersState.count}/6 Titik Dikesan — Sejajarkan Kotak Hitam Kertas`}
+                  </span>
+                </div>
+              </div>
+
+              {/* A4 PROPORTIONALLY LOCKED GUIDE OVERLAY (Aspect Ratio 210 : 297 = 1 : 1.4142) */}
+              {/* This frame exactly matches physical A4 paper dimensions and proportions */}
+              <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5 pointer-events-none z-20">
+                <div
+                  className={`relative w-full max-w-full aspect-[210/297] border-2 rounded-xl transition-all duration-300 pointer-events-none select-none ${
+                    isAllSixAligned
+                      ? 'border-emerald-400 shadow-[inset_0_0_35px_rgba(16,185,129,0.35),0_0_25px_rgba(16,185,129,0.4)] bg-emerald-500/5'
+                      : 'border-dashed border-purple-400/70 shadow-[0_0_20px_rgba(168,85,247,0.2)] bg-purple-950/10'
+                  }`}
+                  style={{
+                    maxHeight: '94%',
+                    maxWidth: 'calc(94vh * 0.707)',
+                  }}
+                >
+                  {/* Subtle A4 Corner Brackets (Crosshair Framing) */}
+                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-3 border-l-3 border-indigo-400 rounded-tl pointer-events-none" />
+                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-3 border-r-3 border-indigo-400 rounded-tr pointer-events-none" />
+                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-3 border-l-3 border-indigo-400 rounded-bl pointer-events-none" />
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-3 border-r-3 border-indigo-400 rounded-br pointer-events-none" />
+
+                  {/* Watermark in center of paper frame */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+                    <span className="text-white text-xs sm:text-sm font-mono tracking-widest uppercase">
+                      TEMPLAT A4 OMR
                     </span>
                   </div>
 
-                  {/* Top-Right Fiducial Target */}
-                  <div className="flex flex-col items-end gap-1">
+                  {/* 1. TOP-LEFT MARKER (Exact coordinate: 8.27% from top, 3.23% from left) */}
+                  <div
+                    className="absolute flex flex-col items-start gap-1"
+                    style={{ top: '8.27%', left: '3.23%', transform: 'translate(0, 0)' }}
+                  >
                     <div
-                      className={`w-10 h-10 sm:w-12 sm:h-12 border-t-4 border-r-4 rounded-tr flex items-center justify-center shadow-md transition-all duration-200 ${
-                        markersState.topRight
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-t-4 border-l-4 rounded-tl flex items-center justify-center shadow-lg transition-all duration-200 ${
+                        markersState.topLeft
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
                       }`}
                     >
                       <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
                     </div>
                     <span
-                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded flex items-center gap-0.5 ${
-                        markersState.topRight
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded ${
+                        markersState.topLeft
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
                           : 'bg-black/80 text-yellow-300'
                       }`}
                     >
-                      {markersState.topRight ? '✔ ATAS KANAN' : '2. ATAS KANAN'}
+                      {markersState.topLeft ? '✔ 1. ATAS KIRI' : '1. ATAS KIRI'}
                     </span>
                   </div>
-                </div>
 
-                {/* 2. MIDDLE ROW MARKERS */}
-                <div className="flex justify-between items-center w-full px-0.5">
-                  {/* Mid-Left Fiducial Target */}
-                  <div className="flex items-center gap-1.5">
+                  {/* 2. TOP-RIGHT MARKER (Exact coordinate: 8.27% from top, 3.23% from right) */}
+                  <div
+                    className="absolute flex flex-col items-end gap-1"
+                    style={{ top: '8.27%', right: '3.23%', transform: 'translate(0, 0)' }}
+                  >
                     <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 border-l-4 border-t-2 border-b-2 flex items-center justify-center shadow-md transition-all duration-200 ${
-                        markersState.midLeft
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-t-4 border-r-4 rounded-tr flex items-center justify-center shadow-lg transition-all duration-200 ${
+                        markersState.topRight
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
                       }`}
                     >
                       <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
                     </div>
                     <span
-                      className={`text-[8px] font-mono font-bold px-1 rounded hidden xs:inline ${
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded ${
+                        markersState.topRight
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
+                          : 'bg-black/80 text-yellow-300'
+                      }`}
+                    >
+                      {markersState.topRight ? '✔ 2. ATAS KANAN' : '2. ATAS KANAN'}
+                    </span>
+                  </div>
+
+                  {/* 3. MID-LEFT MARKER (Exact coordinate: 52.0% from top, 3.23% from left) */}
+                  <div
+                    className="absolute flex items-center gap-1"
+                    style={{ top: '52.0%', left: '3.23%', transform: 'translate(0, -50%)' }}
+                  >
+                    <div
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-l-4 border-t-2 border-b-2 flex items-center justify-center shadow-lg transition-all duration-200 ${
                         markersState.midLeft
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
+                      }`}
+                    >
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
+                    </div>
+                    <span
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded hidden xs:inline ${
+                        markersState.midLeft
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
                           : 'bg-black/80 text-yellow-300'
                       }`}
                     >
@@ -463,64 +528,87 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Middle Center Info */}
-                  <div className="text-center font-mono text-[9px] sm:text-[10px] text-purple-200 bg-slate-950/80 px-2.5 py-0.5 rounded-full border border-purple-500/40">
-                    Piecewise Bi-Linear 6-Point Alignment
-                  </div>
-
-                  {/* Mid-Right Fiducial Target */}
-                  <div className="flex items-center gap-1.5">
+                  {/* 4. MID-RIGHT MARKER (Exact coordinate: 52.0% from top, 3.23% from right) */}
+                  <div
+                    className="absolute flex items-center gap-1"
+                    style={{ top: '52.0%', right: '3.23%', transform: 'translate(0, -50%)' }}
+                  >
                     <span
-                      className={`text-[8px] font-mono font-bold px-1 rounded hidden xs:inline ${
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded hidden xs:inline ${
                         markersState.midRight
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
                           : 'bg-black/80 text-yellow-300'
                       }`}
                     >
                       {markersState.midRight ? '✔ 4. TENGAH' : '4. TENGAH'}
                     </span>
                     <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 border-r-4 border-t-2 border-b-2 flex items-center justify-center shadow-md transition-all duration-200 ${
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-r-4 border-t-2 border-b-2 flex items-center justify-center shadow-lg transition-all duration-200 ${
                         markersState.midRight
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
                       }`}
                     >
                       <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
                     </div>
                   </div>
-                </div>
 
-                {/* 3. BOTTOM ROW MARKERS */}
-                <div className="flex justify-between items-end">
-                  {/* Bottom-Left Fiducial Target */}
-                  <div className="flex flex-col items-start gap-1">
+                  {/* 5. BOT-LEFT MARKER (Exact coordinate: 94.64% from top, 3.23% from left) */}
+                  <div
+                    className="absolute flex flex-col items-start gap-1"
+                    style={{ top: '94.64%', left: '3.23%', transform: 'translate(0, -100%)' }}
+                  >
                     <span
-                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded flex items-center gap-0.5 ${
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded ${
                         markersState.botLeft
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
                           : 'bg-black/80 text-yellow-300'
                       }`}
                     >
-                      {markersState.botLeft ? '✔ BAWAH KIRI' : '5. BAWAH KIRI'}
+                      {markersState.botLeft ? '✔ 5. BAWAH KIRI' : '5. BAWAH KIRI'}
                     </span>
                     <div
-                      className={`w-10 h-10 sm:w-12 sm:h-12 border-b-4 border-l-4 rounded-bl flex items-center justify-center shadow-md transition-all duration-200 ${
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-b-4 border-l-4 rounded-bl flex items-center justify-center shadow-lg transition-all duration-200 ${
                         markersState.botLeft
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
                       }`}
                     >
                       <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
                     </div>
                   </div>
 
-                  {/* Alignment & Auto-Capture Toggle */}
-                  <div className="pointer-events-auto flex items-center gap-2">
+                  {/* 6. BOT-RIGHT MARKER (Exact coordinate: 94.64% from top, 3.23% from right) */}
+                  <div
+                    className="absolute flex flex-col items-end gap-1"
+                    style={{ top: '94.64%', right: '3.23%', transform: 'translate(0, -100%)' }}
+                  >
+                    <span
+                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded ${
+                        markersState.botRight
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60'
+                          : 'bg-black/80 text-yellow-300'
+                      }`}
+                    >
+                      {markersState.botRight ? '✔ 6. BAWAH KANAN' : '6. BAWAH KANAN'}
+                    </span>
+                    <div
+                      className={`w-8 h-8 sm:w-10 sm:h-10 border-b-4 border-r-4 rounded-br flex items-center justify-center shadow-lg transition-all duration-200 ${
+                        markersState.botRight
+                          ? 'border-emerald-400 bg-emerald-500/40 scale-110 ring-2 ring-emerald-400'
+                          : 'border-yellow-400/90 bg-yellow-500/15'
+                      }`}
+                    >
+                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
+                    </div>
+                  </div>
+
+                  {/* Center Auto-Capture Toggle Pill */}
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-auto">
                     <button
                       type="button"
                       onClick={() => setAutoCaptureEnabled(!autoCaptureEnabled)}
-                      className={`px-3 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1.5 border shadow-lg ${
                         autoCaptureEnabled
                           ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/70 shadow-emerald-950/40'
                           : 'bg-slate-900/90 text-slate-400 border-slate-700'
@@ -531,31 +619,9 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                       <span>{autoCaptureEnabled ? 'Auto-Semak Aktif' : 'Auto-Semak Mati'}</span>
                     </button>
                   </div>
-
-                  {/* Bottom-Right Fiducial Target */}
-                  <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`text-[8px] sm:text-[9px] font-mono font-bold px-1 rounded flex items-center gap-0.5 ${
-                        markersState.botRight
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50'
-                          : 'bg-black/80 text-yellow-300'
-                      }`}
-                    >
-                      {markersState.botRight ? '✔ BAWAH KANAN' : '6. BAWAH KANAN'}
-                    </span>
-                    <div
-                      className={`w-10 h-10 sm:w-12 sm:h-12 border-b-4 border-r-4 rounded-br flex items-center justify-center shadow-md transition-all duration-200 ${
-                        markersState.botRight
-                          ? 'border-emerald-400 bg-emerald-500/30 scale-105'
-                          : 'border-yellow-400/80 bg-yellow-500/10'
-                      }`}
-                    >
-                      <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black border-2 border-white shadow"></div>
-                    </div>
-                  </div>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
 

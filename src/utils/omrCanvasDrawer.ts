@@ -376,51 +376,84 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
     }
   }
 
-  // 5. Ruang Bawah: Semakan OMR Rasmi diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas
-  // (Ruang Analisis Pembetulan dibuang mengikut ketetapan semakan anotasi)
+  // 5. Ruang Kosong Bawah Bahagian Tanda Jawapan Pelajar:
+  // Meletakkan anotasi markah, bilangan betul dan data jawapan pelajar dikurangkan ke 50% skala dari asal
   ctx.save();
+  const gridBottomY = gridStartY + questionsPerColumn * rowHeight;
+
   if (scoreText || Object.keys(filledAnswers).length > 0) {
     const isFullMarks = wrongQuestionsList.length === 0;
     const strokeColor = isFullMarks ? '#059669' : '#dc2626';
     const bgColor = isFullMarks ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
 
-    const stampW = Math.min(560, width - 240);
-    const stampH = 56;
-    const stampX = (width - stampW) / 2;
-    const stampY = height - 130;
-
-    // Neat double-border compact card
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    ctx.roundRect(stampX, stampY, stampW, stampH, 8);
-    ctx.fill();
-
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
-    ctx.stroke();
-
-    // Line 1: Header
-    ctx.textAlign = 'center';
-    ctx.fillStyle = strokeColor;
-    ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
-    ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${isFullMarks ? 'CEMERLANG' : 'LULUS'}`, stampX + stampW / 2, stampY + 22);
-
-    // Line 2: Score & counts
-    ctx.font = 'bold 12px "JetBrains Mono", monospace';
-    ctx.fillStyle = isFullMarks ? '#065f46' : '#991b1b';
     const betulCount = totalQuestions - wrongQuestionsList.length;
     const salahCount = wrongQuestionsList.length;
     const markahText = scoreText || `MARKAH: ${betulCount}/${totalQuestions}`;
-    ctx.fillText(`${markahText}   •   [✔ ${betulCount} BETUL  •  ✘ ${salahCount} SALAH]`, stampX + stampW / 2, stampY + 43);
+    const statusText = isFullMarks ? 'CEMERLANG' : betulCount >= totalQuestions * 0.4 ? 'LULUS' : 'PERLU BIMBINGAN';
+
+    // 50% skala dari asal (saiz ketinggian asal 56px kini dikurangkan ke skala 50%, font asal 14px/12px kini 7px/6px)
+    const stampW = Math.min(580, width - 240);
+    const stampH = 50; // Keseluruhan kad diringkaskan ke skala 50% merangkumi markah, bilangan betul & data jawapan
+    const stampX = (width - stampW) / 2;
+    // Terletak terus di ruangan kosong di bawah bahagian tanda jawapan pelajar
+    const stampY = Math.min(height - 110, gridBottomY + 16);
+
+    // Kad Anotasi 50% Skala
+    ctx.fillStyle = bgColor;
+    ctx.beginPath();
+    ctx.roundRect(stampX, stampY, stampW, stampH, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Garisan 1 (Skala 50%): Anotasi Markah & Status & Bilangan Betul
+    ctx.textAlign = 'center';
+    ctx.fillStyle = strokeColor;
+    ctx.font = 'bold 7.5px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(
+      `★ SEMAKAN OMR RASMI ★  |  ${markahText}  |  STATUS: ${statusText}  |  [✔ ${betulCount} BETUL  •  ✘ ${salahCount} SALAH]`,
+      stampX + stampW / 2,
+      stampY + 14
+    );
+
+    // Garisan pembahagi halus
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(stampX + 12, stampY + 22);
+    ctx.lineTo(stampX + stampW - 12, stampY + 22);
+    ctx.stroke();
+
+    // Garisan 2 & 3 (Skala 50%): Data Jawapan Pelajar (Senarai jawapan bagi setiap nombor soalan)
+    const studentAnswerSummary = Array.from({ length: totalQuestions }, (_, i) => {
+      const qNum = i + 1;
+      const ans = filledAnswers[qNum] || '-';
+      const isAnsCorrect = correctAnswers[qNum] !== undefined ? filledAnswers[qNum] === correctAnswers[qNum] : true;
+      return `${qNum}:${ans}${correctAnswers[qNum] !== undefined ? (isAnsCorrect ? '✔' : '✘') : ''}`;
+    });
+
+    ctx.font = '6px "JetBrains Mono", monospace';
+    ctx.fillStyle = isFullMarks ? '#065f46' : '#991b1b';
+    ctx.textAlign = 'center';
+
+    if (totalQuestions <= 20) {
+      // 1 baris ringkas data jawapan pelajar
+      const textRow = `DATA JAWAPAN PELAJAR: ${studentAnswerSummary.join('  ')}`;
+      ctx.fillText(textRow, stampX + stampW / 2, stampY + 36);
+    } else {
+      // 2 baris data jawapan jika > 20 soalan
+      const half = Math.ceil(totalQuestions / 2);
+      const row1 = `DATA JWP (S1-${half}): ${studentAnswerSummary.slice(0, half).join(' ')}`;
+      const row2 = `DATA JWP (S${half + 1}-${totalQuestions}): ${studentAnswerSummary.slice(half).join(' ')}`;
+      ctx.fillText(row1, stampX + stampW / 2, stampY + 33);
+      ctx.fillText(row2, stampX + stampW / 2, stampY + 43);
+    }
   } else {
     // Blank sheet mode: Minimal, neat examiner verification line in footer
     ctx.fillStyle = '#6b7280';
-    ctx.font = '500 13px "Plus Jakarta Sans", sans-serif';
+    ctx.font = '500 12px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Ruang Pengesahan Pemeriksa: ______________________________     Tarikh: _______________', width / 2, height - 90);
   }

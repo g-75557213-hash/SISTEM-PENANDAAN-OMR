@@ -127,46 +127,68 @@ export function generateMarksOnlyCanvas(
     }
   });
 
-  // Semakan OMR Rasmi - Diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas
-  // (Ruang Analisis Pembetulan dibuang mengikut ketetapan semakan anotasi)
+  // Semakan OMR Rasmi - Diletakkan di ruangan kosong bawah bahagian tanda jawapan pelajar (Skala 50%)
   ctx.save();
   const isLulus = cetakan_header_markah.status_kelulusan === 'LULUS' || cetakan_header_markah.status_kelulusan === 'CEMERLANG';
   const strokeColor = isLulus ? '#059669' : '#dc2626';
   const bgColor = isLulus ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
 
-  // Compact size: height 56px, centered horizontally in bottom whitespace
-  const stampW = Math.min(560, width - 240);
-  const stampH = 56;
+  const gridBottomY = gridStartY + questionsPerCol * rowHeight;
+  const stampW = Math.min(580, width - 240);
+  const stampH = 50; // Skala 50% dari saiz asal
   const stampX = (width - stampW) / 2;
-  const stampY = height - 130;
+  const stampY = Math.min(height - 110, gridBottomY + 16);
 
-  // Background pill / box with neat double border
+  // Background card 50% skala
   ctx.fillStyle = bgColor;
   ctx.beginPath();
-  ctx.roundRect(stampX, stampY, stampW, stampH, 8);
+  ctx.roundRect(stampX, stampY, stampW, stampH, 4);
   ctx.fill();
 
   ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
   ctx.stroke();
 
-  // Line 1: Official Header & Status (Small & Neat)
+  // Line 1 (Skala 50%): Anotasi Markah & Status & Bilangan Betul
   ctx.textAlign = 'center';
   ctx.fillStyle = strokeColor;
-  ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${cetakan_header_markah.status_kelulusan}`, stampX + stampW / 2, stampY + 22);
-
-  // Line 2: Compact summary score & counts
-  ctx.font = 'bold 12px "JetBrains Mono", monospace';
-  ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+  ctx.font = 'bold 7.5px "Plus Jakarta Sans", sans-serif';
   const summaryScoreText = cetakan_header_markah.teks_cetakan || `MARKAH: ${ringkasan_keputusan.jumlah_markah} (${ringkasan_keputusan.peratusan})`;
   const countsText = `[✔ ${ringkasan_keputusan.jawapan_betul} BETUL  •  ✘ ${ringkasan_keputusan.jawapan_salah} SALAH]`;
-  ctx.fillText(`${summaryScoreText}   •   ${countsText}`, stampX + stampW / 2, stampY + 43);
+  ctx.fillText(
+    `★ SEMAKAN OMR RASMI ★  |  ${summaryScoreText}  |  STATUS: ${cetakan_header_markah.status_kelulusan}  |  ${countsText}`,
+    stampX + stampW / 2,
+    stampY + 14
+  );
+
+  // Divider
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(stampX + 12, stampY + 22);
+  ctx.lineTo(stampX + stampW - 12, stampY + 22);
+  ctx.stroke();
+
+  // Line 2 (Skala 50%): Data Jawapan Pelajar
+  const studentAnswerSummary = analisis_detail.map((item) => {
+    const ans = item.jawapan_pelajar === 'TIADA_JAWAPAN' ? '-' : item.jawapan_pelajar;
+    const mark = item.status === 'BETUL' ? '✔' : item.status === 'SALAH' ? '✘' : '○';
+    return `${item.nombor_soalan}:${ans}${mark}`;
+  });
+
+  ctx.font = '6px "JetBrains Mono", monospace';
+  ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+
+  if (totalQ <= 20) {
+    const rowText = `DATA JAWAPAN PELAJAR: ${studentAnswerSummary.join('  ')}`;
+    ctx.fillText(rowText, stampX + stampW / 2, stampY + 36);
+  } else {
+    const half = Math.ceil(totalQ / 2);
+    const row1 = `DATA JWP (S1-${half}): ${studentAnswerSummary.slice(0, half).join(' ')}`;
+    const row2 = `DATA JWP (S${half + 1}-${totalQ}): ${studentAnswerSummary.slice(half).join(' ')}`;
+    ctx.fillText(row1, stampX + stampW / 2, stampY + 33);
+    ctx.fillText(row2, stampX + stampW / 2, stampY + 43);
+  }
 
   ctx.restore();
 

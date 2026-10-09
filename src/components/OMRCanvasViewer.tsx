@@ -190,7 +190,7 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
         }
       });
 
-      // 3. Draw Official Score Stamp (SEMAKAN OMR RASMI diletakkan di bahagian kosong di bawah kertas jawapan secara kecil dan kemas)
+      // 3. Draw Official Score Stamp & Student Answer Data (50% Skala dari asal di ruangan kosong bawah bahagian tanda jawapan pelajar)
       if (showHeaderStamp) {
         ctx.save();
         const headerInfo = gradingResult.cetakan_header_markah;
@@ -200,39 +200,57 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
         const strokeColor = isLulus ? '#059669' : '#dc2626';
         const bgColor = isLulus ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
 
-        // Position: compact and neat in the empty footer space below question grid
-        const stampW = Math.min(520, Math.round(w * 0.52));
-        const stampH = Math.max(48, Math.round(h * 0.042));
+        // 50% skala dari saiz asal: tinggi dikurangkan ke ~50% (28-34px)
+        const stampW = Math.min(600, Math.round(w * 0.62));
+        const stampH = Math.max(34, Math.round(h * 0.026));
         const stampX = (w - stampW) / 2;
-        const stampY = Math.round(h - stampH - h * 0.022);
+        // Terletak di bahagian kosong di bawah ruang tanda jawapan pelajar
+        const stampY = Math.round(h - stampH - h * 0.016);
 
-        // Stamp card background
+        // Stamp card background (Skala 50%)
         ctx.fillStyle = bgColor;
         ctx.beginPath();
-        ctx.roundRect(stampX, stampY, stampW, stampH, 8);
+        ctx.roundRect(stampX, stampY, stampW, stampH, 4);
         ctx.fill();
 
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
         ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(stampX + 3, stampY + 3, stampW - 6, stampH - 6, 6);
         ctx.stroke();
 
-        // Line 1: Title & Status
+        // Line 1 (Skala 50%): Anotasi Markah & Status & Bilangan Betul
         ctx.textAlign = 'center';
         ctx.fillStyle = strokeColor;
-        ctx.font = `bold ${Math.max(12, Math.round(stampH * 0.28))}px "Plus Jakarta Sans", sans-serif`;
-        ctx.fillText(`★ SEMAKAN OMR RASMI ★   |   STATUS: ${headerInfo.status_kelulusan}`, stampX + stampW / 2, stampY + stampH * 0.40);
-
-        // Line 2: Score text & counts
-        ctx.font = `bold ${Math.max(11, Math.round(stampH * 0.25))}px "JetBrains Mono", monospace`;
-        ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+        const fontSizeHeader = Math.max(7, Math.round(stampH * 0.28));
+        ctx.font = `bold ${fontSizeHeader}px "Plus Jakarta Sans", sans-serif`;
         const scoreStr = headerInfo.teks_cetakan || `MARKAH: ${summary.jumlah_markah} (${summary.peratusan})`;
         const countStr = `[✔ ${summary.jawapan_betul} BETUL  •  ✘ ${summary.jawapan_salah} SALAH]`;
-        ctx.fillText(`${scoreStr}   •   ${countStr}`, stampX + stampW / 2, stampY + stampH * 0.78);
+        ctx.fillText(
+          `★ SEMAKAN OMR RASMI ★  |  ${scoreStr}  |  STATUS: ${headerInfo.status_kelulusan}  |  ${countStr}`,
+          stampX + stampW / 2,
+          stampY + stampH * 0.38
+        );
+
+        // Divider
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(stampX + 8, stampY + stampH * 0.52);
+        ctx.lineTo(stampX + stampW - 8, stampY + stampH * 0.52);
+        ctx.stroke();
+
+        // Line 2 (Skala 50%): Data Jawapan Pelajar
+        const fontSizeData = Math.max(6, Math.round(stampH * 0.24));
+        ctx.font = `bold ${fontSizeData}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+
+        const answerDataItems = gradingResult.analisis_detail.map((item) => {
+          const ans = item.jawapan_pelajar === 'TIADA_JAWAPAN' ? '-' : item.jawapan_pelajar;
+          const mark = item.status === 'BETUL' ? '✔' : item.status === 'SALAH' ? '✘' : '○';
+          return `${item.nombor_soalan}:${ans}${mark}`;
+        });
+
+        const dataStr = `DATA JAWAPAN: ${answerDataItems.join('  ')}`;
+        ctx.fillText(dataStr, stampX + stampW / 2, stampY + stampH * 0.82);
 
         ctx.restore();
       }

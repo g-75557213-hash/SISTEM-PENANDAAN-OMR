@@ -78,7 +78,7 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
     try {
       const clientId =
         (firebaseConfig as any).oAuthClientId ||
-        '463789169260-b9nh72q3hsd33j4r29asu5pu86807qbi.apps.googleusercontent.com';
+        '50995058574-hu8ahk7931v88amodgue22cn75rg7qk5.apps.googleusercontent.com';
 
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
