@@ -94,9 +94,22 @@ export interface ClassFolder {
 export interface TeacherUser {
   id: string;
   name: string;
-  email: string;
+  accessCode: string; // Kod akses guru ciptaan sendiri (cth: CIKGU123, 7555, SAINS-SMKJ)
+  email?: string;
   avatarUrl?: string;
   schoolName?: string;
+  createdAt?: string;
+}
+
+export interface AdminApiKey {
+  id: string;
+  key: string;
+  maskedKey: string;
+  label?: string;
+  addedAt: string;
+  status: 'active' | 'quota_exceeded' | 'error' | 'untested';
+  lastTested?: string;
+  errorMessage?: string;
 }
 
 

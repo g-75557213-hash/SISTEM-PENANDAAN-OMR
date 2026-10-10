@@ -1,7 +1,18 @@
 import React, { useRef, useState } from 'react';
 import { TeacherUser } from '../types';
-import { X, Camera, Sparkles, School, Mail, LogOut, Check } from 'lucide-react';
-import { getAccountProfileAvatar } from './GoogleAuthModal';
+import {
+  X,
+  Camera,
+  Sparkles,
+  School,
+  KeyRound,
+  LogOut,
+  Check,
+  Copy,
+  User,
+  ShieldCheck,
+} from 'lucide-react';
+import { getTeacherAvatarSvg, TEACHER_AVATAR_PRESETS } from '../utils/avatarUtils';
 
 interface TeacherProfileModalProps {
   isOpen: boolean;
@@ -19,10 +30,11 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   onLogout,
 }) => {
   const [name, setName] = useState(currentUser.name);
-  const [schoolName, setSchoolName] = useState(currentUser.schoolName || '');
+  const [schoolName, setSchoolName] = useState(currentUser.schoolName || 'SMK JENERI');
   const [avatarUrl, setAvatarUrl] = useState(
-    currentUser.avatarUrl || getAccountProfileAvatar(currentUser.email, currentUser.name)
+    currentUser.avatarUrl || getTeacherAvatarSvg(currentUser.accessCode, currentUser.name)
   );
+  const [copiedCode, setCopiedCode] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -36,9 +48,9 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
       if (typeof reader.result === 'string') {
         setAvatarUrl(reader.result);
         try {
-          localStorage.setItem(`omr_account_avatar_${currentUser.email}`, reader.result);
+          localStorage.setItem(`omr_account_avatar_${currentUser.accessCode}`, reader.result);
         } catch {
-          // ignore storage quota error
+          // ignore
         }
       }
     };
@@ -48,11 +60,27 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
   const handleSave = () => {
     const updated: TeacherUser = {
       ...currentUser,
-      name,
+      name: name.trim() || currentUser.name,
       schoolName: schoolName.trim() || 'SMK JENERI',
       avatarUrl,
     };
     onUpdateUser(updated);
+
+    // Also update saved profiles in localStorage
+    try {
+      localStorage.setItem(`omr_teacher_profile_${currentUser.accessCode}`, JSON.stringify(updated));
+      const raw = localStorage.getItem('omr_teacher_saved_profiles');
+      if (raw) {
+        let list: TeacherUser[] = JSON.parse(raw);
+        list = list.map((p) =>
+          p.accessCode.toUpperCase() === currentUser.accessCode.toUpperCase() ? updated : p
+        );
+        localStorage.setItem('omr_teacher_saved_profiles', JSON.stringify(list));
+      }
+    } catch {
+      // ignore
+    }
+
     setSavedFeedback(true);
     setTimeout(() => {
       setSavedFeedback(false);
@@ -60,23 +88,26 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
     }, 600);
   };
 
+  const copyCode = () => {
+    navigator.clipboard.writeText(currentUser.accessCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
       <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl shadow-indigo-950 flex flex-col">
-        {/* Header with colorful blue-to-purple gradient */}
-        <div className="p-5 bg-gradient-to-r from-blue-900/60 via-indigo-900/60 to-purple-900/60 border-b border-indigo-500/30 flex items-center justify-between">
+        {/* Header */}
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-900/70 via-indigo-900/70 to-purple-900/70 border-b border-indigo-500/30 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-md ring-1 ring-purple-400/40 aspect-square bg-slate-900 shrink-0 flex items-center justify-center">
-              <img
-                src="/src/assets/images/system_logo_1791437837470.jpg"
-                alt="SISTEM PENANDAAN OMR"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+            <div className="w-9 h-9 rounded-xl overflow-hidden shadow-md ring-1 ring-purple-400/40 bg-slate-950 shrink-0 flex items-center justify-center">
+              <KeyRound className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-tight">Profil Akaun Guru</h3>
-              <span className="text-[10px] text-purple-300 font-medium">Google Workspace &bull; DELIMa MOE</span>
+              <span className="text-[10px] text-purple-300 font-medium">
+                Log Masuk Kod Akses Peribadi
+              </span>
             </div>
           </div>
           <button
@@ -88,21 +119,14 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
         </div>
 
         {/* Body content */}
-        <div className="p-5 flex flex-col gap-4 text-xs">
-          {/* Avatar Showcase with Glow Ring */}
+        <div className="p-4 sm:p-5 flex flex-col gap-4 text-xs">
+          {/* Avatar Showcase */}
           <div className="flex flex-col items-center text-center p-4 bg-slate-950/70 rounded-xl border border-indigo-500/20 relative">
             <div className="relative group mb-2.5">
               <img
                 src={avatarUrl}
                 alt={name}
-                onError={() => {
-                  setAvatarUrl(
-                    `data:image/svg+xml;utf8,${encodeURIComponent(
-                      `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" rx="64" fill="#4f46e5"/><text x="64" y="74" font-family="sans-serif" font-size="52" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">G</text></svg>`
-                    )}`
-                  );
-                }}
-                className="w-20 h-20 rounded-full object-cover ring-4 ring-purple-500/80 shadow-xl shadow-purple-950/60"
+                className="w-20 h-20 rounded-full object-cover ring-4 ring-indigo-500/80 shadow-xl shadow-indigo-950/60"
               />
               <button
                 type="button"
@@ -122,33 +146,55 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-[11px] font-bold text-purple-300 hover:text-purple-200 flex items-center gap-1.5 transition"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>Muat Naik / Tukar Foto Akaun Sendiri</span>
-            </button>
+            {/* Quick avatar preset picks */}
+            <div className="flex items-center gap-1.5 mt-1">
+              {TEACHER_AVATAR_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() =>
+                    setAvatarUrl(getTeacherAvatarSvg(currentUser.accessCode, name, preset.iconText))
+                  }
+                  title={preset.label}
+                  className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-indigo-900/60 border border-slate-800 hover:border-indigo-500 flex items-center justify-center text-sm transition"
+                >
+                  {preset.iconText}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Form details */}
           <div className="space-y-3">
+            {/* Teacher Code display */}
             <div>
-              <label className="block text-slate-400 mb-1 font-semibold flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                Emel Log Masuk Google:
-              </label>
-              <div className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-300 font-mono text-xs flex items-center justify-between">
-                <span>{currentUser.email}</span>
-                <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30">
-                  DELIMa
+              <label className="block text-slate-400 mb-1 font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+                  Kod Akses Akaun Anda:
                 </span>
+                <span className="text-[10px] text-emerald-400 font-normal">
+                  (Digunakan untuk log masuk)
+                </span>
+              </label>
+              <div className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 rounded-lg text-white font-mono font-bold text-xs flex items-center justify-between">
+                <span className="tracking-wider">{currentUser.accessCode}</span>
+                <button
+                  type="button"
+                  onClick={copyCode}
+                  className="px-2 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded text-[10px] font-sans font-semibold transition flex items-center gap-1"
+                >
+                  {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedCode ? 'Disalin' : 'Salin Kod'}</span>
+                </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Nama Panggilan Guru:</label>
+              <label className="block text-slate-400 mb-1 font-semibold flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-purple-400" />
+                Nama Panggilan Guru:
+              </label>
               <input
                 type="text"
                 value={name}
@@ -167,7 +213,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                 value={schoolName}
                 onChange={(e) => setSchoolName(e.target.value)}
                 placeholder="SMK JENERI"
-                className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 focus:border-purple-500 rounded-lg text-white font-medium text-xs uppercase focus:outline-none placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal"
+                className="w-full px-3 py-2 bg-slate-950 border border-indigo-500/30 focus:border-purple-500 rounded-lg text-white font-medium text-xs uppercase focus:outline-none placeholder:text-slate-500"
               />
             </div>
           </div>
@@ -182,12 +228,12 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
               {savedFeedback ? (
                 <>
                   <Check className="w-4 h-4 text-emerald-300" />
-                  <span>Gambar & Profil Disimpan!</span>
+                  <span>Profil Berjaya Disimpan!</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Simpan Perubahan Profil</span>
+                  <span>Simpan Perubahan</span>
                 </>
               )}
             </button>
@@ -201,7 +247,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
               className="w-full py-2 px-3 bg-slate-950 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Log Keluar Akaun Guru</span>
+              <span>Tukar Kod / Log Keluar Akaun</span>
             </button>
           </div>
         </div>

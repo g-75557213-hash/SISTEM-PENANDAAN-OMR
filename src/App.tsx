@@ -14,9 +14,10 @@ import { OMRResultsView } from './components/OMRResultsView';
 import { OMRSheetGeneratorModal } from './components/OMRSheetGeneratorModal';
 import { OMRScannerModal } from './components/OMRScannerModal';
 import { ClassFolderManager } from './components/ClassFolderManager';
-import { GoogleAuthModal, getAccountProfileAvatar } from './components/GoogleAuthModal';
+import { TeacherAccessCodeModal } from './components/TeacherAccessCodeModal';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
-import { initAuthListener, logoutGoogle } from './services/firebaseAuth';
+import { AdminApiKeyModal } from './components/AdminApiKeyModal';
+import { getTeacherAvatarSvg } from './utils/avatarUtils';
 import {
   Scan,
   Upload,
@@ -40,13 +41,16 @@ import {
   Plus,
   Check,
   X,
+  Key,
+  KeyRound,
 } from 'lucide-react';
 
 export default function App() {
-  // Teacher Authentication state (Google / MOE DELIMa)
+  // Teacher Authentication state (Kod Akses Guru ciptaan sendiri - Tanpa Google/Email)
   const [currentUser, setCurrentUser] = useState<TeacherUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
   // Primary Navigation Tab: 'scanner' | 'folders'
   const [activeMainTab, setActiveMainTab] = useState<'scanner' | 'folders'>('scanner');
@@ -120,52 +124,30 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // On mount: Check stored teacher user or open Google login
+  // On mount: Check stored teacher user or open login modal
   useEffect(() => {
-    const unsubscribe = initAuthListener(
-      (firebaseUser) => {
-        if (firebaseUser && firebaseUser.email) {
-          const email = firebaseUser.email;
-          const photo = firebaseUser.photoURL || getAccountProfileAvatar(email);
-          const name = firebaseUser.displayName || `Cikgu (${email.split('@')[0]})`;
-
-          setCurrentUser((prev) => {
-            const updated: TeacherUser = {
-              id: `google-${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-              name: prev?.name || name,
-              email,
-              schoolName: prev?.schoolName || 'SMK JENERI',
-              avatarUrl: photo,
-            };
-            localStorage.setItem('omr_teacher_active_user', JSON.stringify(updated));
-            return updated;
-          });
-          loadTeacherFolders(email);
-          setIsAuthModalOpen(false);
-        }
-      },
-      () => {
-        // Auth state not signed in via Firebase
-      }
-    );
-
     const savedUser = localStorage.getItem('omr_teacher_active_user');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser) as TeacherUser;
+        if (!parsed.accessCode) {
+          parsed.accessCode =
+            parsed.name.replace(/^Cikgu\s*/i, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'CIKGU123';
+        }
         if (parsed.schoolName === 'SMK BANDAR UTAMA DAMANSARA') {
           parsed.schoolName = 'SMK JENERI';
         }
         if (
           !parsed.avatarUrl ||
           parsed.avatarUrl.includes('unsplash.com') ||
-          parsed.avatarUrl.includes('dicebear.com')
+          parsed.avatarUrl.includes('dicebear.com') ||
+          parsed.avatarUrl.includes('unavatar.io')
         ) {
-          parsed.avatarUrl = getAccountProfileAvatar(parsed.email, parsed.name);
+          parsed.avatarUrl = getTeacherAvatarSvg(parsed.accessCode, parsed.name);
         }
         setCurrentUser(parsed);
         localStorage.setItem('omr_teacher_active_user', JSON.stringify(parsed));
-        loadTeacherFolders(parsed.email);
+        loadTeacherFolders(parsed.accessCode);
       } catch (e) {
         setIsAuthModalOpen(true);
       }
@@ -173,16 +155,18 @@ export default function App() {
       // Prompt login on first load
       setIsAuthModalOpen(true);
     }
-
-    return () => {
-      unsubscribe();
-    };
   }, []);
 
-  // Load teacher folders from storage (clean, zero mock classes)
-  const loadTeacherFolders = (email: string) => {
-    const storageKey = `omr_folders_${email}`;
-    const savedData = localStorage.getItem(storageKey);
+  // Load teacher folders from storage (partitioned strictly per teacher accessCode)
+  const loadTeacherFolders = (accessCode: string) => {
+    const storageKey = `omr_folders_${accessCode}`;
+    let savedData = localStorage.getItem(storageKey);
+
+    // Fallback: Check if folders existed under previous email or id format
+    if (!savedData && currentUser?.email) {
+      savedData = localStorage.getItem(`omr_folders_${currentUser.email}`);
+    }
+
     if (savedData) {
       try {
         const folders = JSON.parse(savedData) as ClassFolder[];
@@ -204,26 +188,21 @@ export default function App() {
   const persistFolders = (folders: ClassFolder[]) => {
     setClassFolders(folders);
     if (currentUser) {
-      const storageKey = `omr_folders_${currentUser.email}`;
+      const storageKey = `omr_folders_${currentUser.accessCode || currentUser.id}`;
       localStorage.setItem(storageKey, JSON.stringify(folders));
     }
   };
 
-  // Handle Google Login
+  // Handle Teacher Login with custom access code
   const handleLogin = (user: TeacherUser) => {
     setCurrentUser(user);
     localStorage.setItem('omr_teacher_active_user', JSON.stringify(user));
     setIsAuthModalOpen(false);
-    loadTeacherFolders(user.email);
+    loadTeacherFolders(user.accessCode || user.id);
   };
 
   // Handle Logout
-  const handleLogout = async () => {
-    try {
-      await logoutGoogle();
-    } catch (e) {
-      // ignore
-    }
+  const handleLogout = () => {
     localStorage.removeItem('omr_teacher_active_user');
     setCurrentUser(null);
     setClassFolders([]);
@@ -232,7 +211,7 @@ export default function App() {
     setIsAuthModalOpen(true);
   };
 
-  // Handle Profile Update (e.g. changing profile avatar)
+  // Handle Profile Update
   const handleUpdateUser = (updatedUser: TeacherUser) => {
     setCurrentUser(updatedUser);
     localStorage.setItem('omr_teacher_active_user', JSON.stringify(updatedUser));
@@ -279,7 +258,7 @@ export default function App() {
 
     const newFolder: ClassFolder = {
       id: `class-${Date.now()}`,
-      teacherEmail: currentUser.email,
+      teacherEmail: currentUser.accessCode || currentUser.id,
       className: cName,
       subject: cSubject,
       examTitle,
@@ -542,31 +521,42 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right: Quick Template button + Profile */}
+            {/* Right: Quick Template button + Admin Keys + Profile */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsSheetGeneratorOpen(true)}
-                className="px-2.5 sm:px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-indigo-500/30 rounded-lg text-xs font-bold items-center gap-1.5 transition hidden sm:flex"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-200 border border-indigo-500/30 rounded-xl text-xs font-bold items-center gap-1.5 transition hidden sm:flex"
                 title="Jana & cetak templat A4 mengikut bilangan soalan"
               >
                 <Printer className="w-3.5 h-3.5 text-purple-400" />
                 <span>Jana Templat</span>
               </button>
 
+              {/* Dedicated Admin API Keys Button */}
+              <button
+                type="button"
+                onClick={() => setIsAdminModalOpen(true)}
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
+                title="Bahagian Admin: Pengurusan & Penambahan Kunci Gemini API"
+              >
+                <Key className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Admin Kunci API</span>
+              </button>
+
               {currentUser ? (
                 <div className="flex items-center gap-1.5 sm:gap-2.5 sm:pl-2.5 sm:border-l sm:border-indigo-500/20">
-                  {/* Clickable Profile Card showing logged in account picture */}
+                  {/* Clickable Profile Card showing logged in account picture and code */}
                   <div
                     onClick={() => setIsProfileModalOpen(true)}
                     className="flex items-center gap-2 text-left cursor-pointer group p-1 -m-1 rounded-xl hover:bg-slate-800/80 border border-transparent hover:border-indigo-500/30 transition"
-                    title="Klik untuk lihat profil & tukar gambar akaun"
+                    title="Klik untuk lihat profil akaun"
                   >
                     <div className="relative">
                       {currentUser.avatarUrl ? (
                         <img
                           src={currentUser.avatarUrl}
                           alt={currentUser.name}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-2 ring-purple-500/80 shadow-md shadow-indigo-950 group-hover:ring-purple-400 transition"
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-2 ring-indigo-500/80 shadow-md shadow-indigo-950 group-hover:ring-purple-400 transition"
                         />
                       ) : (
                         <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
@@ -579,8 +569,8 @@ export default function App() {
                       <span className="block text-[11px] font-bold text-slate-200 leading-tight truncate max-w-[125px] group-hover:text-purple-300 transition">
                         {currentUser.name}
                       </span>
-                      <span className="block text-[9px] text-purple-300/80 font-mono truncate max-w-[125px]">
-                        {currentUser.email}
+                      <span className="block text-[9px] text-emerald-400 font-mono font-bold truncate max-w-[125px]">
+                        Kod: {currentUser.accessCode}
                       </span>
                     </div>
                   </div>
@@ -588,7 +578,7 @@ export default function App() {
                     type="button"
                     onClick={handleLogout}
                     className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
-                    title="Log Keluar Google"
+                    title="Tukar Kod Guru / Log Keluar"
                   >
                     <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
@@ -597,9 +587,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition shadow-md shadow-indigo-950"
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-indigo-950"
                 >
-                  Log Masuk
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Log Masuk Kod</span>
                 </button>
               )}
             </div>
@@ -1079,12 +1070,18 @@ export default function App() {
         </p>
       </footer>
 
-      {/* Google Authentication Modal */}
-      <GoogleAuthModal
+      {/* Teacher Access Code Modal (No Google / Email required) */}
+      <TeacherAccessCodeModal
         isOpen={isAuthModalOpen}
         onLogin={handleLogin}
         onClose={currentUser ? () => setIsAuthModalOpen(false) : undefined}
-        defaultEmail={localStorage.getItem('omr_teacher_saved_email') || currentUser?.email || ''}
+        defaultCode={currentUser?.accessCode || ''}
+      />
+
+      {/* Admin Gemini API Key Manager Modal (Multi-Key Rotation Pool) */}
+      <AdminApiKeyModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
       />
 
       {/* Teacher Profile Modal (Shows Account Picture & Settings) */}

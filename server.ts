@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
@@ -15,22 +16,69 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Helper to retrieve and support multiple Gemini API keys (single, comma-separated, or numbered GEMINI_API_KEY_2, etc.)
+// Admin API Key Storage interface & persistence
+interface StoredApiKey {
+  id: string;
+  key: string;
+  label?: string;
+  addedAt: string;
+  status: 'active' | 'quota_exceeded' | 'error' | 'untested';
+  lastTested?: string;
+  errorMessage?: string;
+}
+
+const KEYS_FILE = path.join(__dirname, 'admin-keys.json');
+
+function loadAdminKeys(): StoredApiKey[] {
+  try {
+    if (fs.existsSync(KEYS_FILE)) {
+      const data = fs.readFileSync(KEYS_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Gagal membaca fail admin-keys.json:', e);
+  }
+  return [];
+}
+
+let memoryAdminKeys: StoredApiKey[] = loadAdminKeys();
+
+function saveAdminKeys() {
+  try {
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(memoryAdminKeys, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Gagal menyimpan admin-keys.json:', e);
+  }
+}
+
+function maskApiKey(key: string): string {
+  if (!key || key.length < 8) return '********';
+  return `${key.slice(0, 6)}...${key.slice(-4)}`;
+}
+
+// Helper to retrieve and support multiple Gemini API keys
 function getAvailableGeminiApiKeys(): string[] {
   const keys: string[] = [];
 
-  // 1. From GEMINI_API_KEYS (comma or semicolon separated)
+  // 1. From admin added keys (active or untested)
+  for (const item of memoryAdminKeys) {
+    if (item.status !== 'error' && item.key && item.key.trim()) {
+      keys.push(item.key.trim());
+    }
+  }
+
+  // 2. From GEMINI_API_KEYS (comma or semicolon separated)
   if (process.env.GEMINI_API_KEYS) {
     keys.push(...process.env.GEMINI_API_KEYS.split(/[,;\n\r]+/).map((k) => k.trim()).filter(Boolean));
   }
 
-  // 2. From GEMINI_API_KEY (can be single or comma-separated: key1,key2,key3)
+  // 3. From GEMINI_API_KEY (can be single or comma-separated)
   if (process.env.GEMINI_API_KEY) {
     keys.push(...process.env.GEMINI_API_KEY.split(/[,;\n\r]+/).map((k) => k.trim()).filter(Boolean));
   }
 
-  // 3. From numbered keys (GEMINI_API_KEY_1, GEMINI_API_KEY_2, ..., GEMINI_API_KEY_10)
-  for (let i = 1; i <= 10; i++) {
+  // 4. From numbered keys (GEMINI_API_KEY_1 to 20)
+  for (let i = 1; i <= 20; i++) {
     const key = process.env[`GEMINI_API_KEY_${i}`];
     if (key && key.trim()) {
       keys.push(key.trim());
@@ -40,7 +88,210 @@ function getAvailableGeminiApiKeys(): string[] {
   return Array.from(new Set(keys));
 }
 
-// Check status of configured Gemini API Keys on server (safe, no secret values exposed)
+// Mark key status in pool when runtime error / quota occurs
+function markKeyStatus(key: string, status: 'active' | 'quota_exceeded' | 'error', errorMsg?: string) {
+  const item = memoryAdminKeys.find((k) => k.key === key);
+  if (item) {
+    item.status = status;
+    item.lastTested = new Date().toISOString();
+    if (errorMsg) item.errorMessage = errorMsg;
+    saveAdminKeys();
+  }
+}
+
+// Admin API: List all API Keys (Masked, safe)
+app.get('/api/admin/keys', (req, res) => {
+  const maskedList = memoryAdminKeys.map((item) => ({
+    id: item.id,
+    maskedKey: maskApiKey(item.key),
+    label: item.label || 'Kunci Gemini API',
+    addedAt: item.addedAt,
+    status: item.status,
+    lastTested: item.lastTested,
+    errorMessage: item.errorMessage,
+  }));
+
+  const envKeyCount = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEYS,
+  ].filter(Boolean).length;
+
+  res.json({
+    success: true,
+    keys: maskedList,
+    totalCount: memoryAdminKeys.length,
+    activeCount: memoryAdminKeys.filter((k) => k.status === 'active' || k.status === 'untested').length,
+    envKeyCount,
+  });
+});
+
+// Admin API: Bulk add or single add API Keys
+app.post('/api/admin/keys', (req, res) => {
+  try {
+    const { rawKeys, label } = req.body;
+    if (!rawKeys || typeof rawKeys !== 'string') {
+      return res.status(400).json({ error: 'Sila masukkan sekurang-kurangnya satu API Key.' });
+    }
+
+    // Split by newlines, commas, semicolons, or whitespace
+    const extracted = rawKeys
+      .split(/[\r\n,;\s]+/)
+      .map((k) => k.trim())
+      .filter((k) => k.length >= 15); // standard Gemini API key is > 20 chars
+
+    if (extracted.length === 0) {
+      return res.status(400).json({ error: 'Tiada format API Key yang sah dikesan. Sila semak input anda.' });
+    }
+
+    const existingKeySet = new Set(memoryAdminKeys.map((k) => k.key));
+    let addedCount = 0;
+
+    for (const key of extracted) {
+      if (!existingKeySet.has(key)) {
+        existingKeySet.add(key);
+        memoryAdminKeys.push({
+          id: `key_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          key,
+          label: label || `Kunci #${memoryAdminKeys.length + 1}`,
+          addedAt: new Date().toISOString(),
+          status: 'untested',
+        });
+        addedCount++;
+      }
+    }
+
+    saveAdminKeys();
+
+    return res.json({
+      success: true,
+      message: `Berjaya menambah ${addedCount} API Key baru ke dalam kolam sistem.`,
+      addedCount,
+      totalCount: memoryAdminKeys.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ralat menambah API Key', details: err?.message });
+  }
+});
+
+// Admin API: Delete single API Key
+app.delete('/api/admin/keys/:id', (req, res) => {
+  const { id } = req.params;
+  const initialLength = memoryAdminKeys.length;
+  memoryAdminKeys = memoryAdminKeys.filter((k) => k.id !== id);
+  saveAdminKeys();
+
+  res.json({
+    success: true,
+    deleted: memoryAdminKeys.length < initialLength,
+    totalCount: memoryAdminKeys.length,
+  });
+});
+
+// Admin API: Clear all Admin API Keys
+app.delete('/api/admin/clear-all', (req, res) => {
+  memoryAdminKeys = [];
+  saveAdminKeys();
+  res.json({ success: true, message: 'Semua API Key dalam kolam admin telah dikosongkan.' });
+});
+
+// Admin API: Test a specific key or test all
+app.post('/api/admin/test-key', async (req, res) => {
+  try {
+    const { id } = req.body;
+    const target = memoryAdminKeys.find((k) => k.id === id);
+
+    if (!target) {
+      return res.status(404).json({ error: 'Kunci tidak dijumpai.' });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: target.key,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    });
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: 'Sahkan sambungan API. Jawab satu perkataan: OK.',
+      });
+
+      if (response && response.text) {
+        target.status = 'active';
+        target.lastTested = new Date().toISOString();
+        target.errorMessage = undefined;
+        saveAdminKeys();
+
+        return res.json({
+          success: true,
+          status: 'active',
+          message: 'Kunci aktif dan sah! Sambungan ke Gemini API berjaya.',
+        });
+      }
+    } catch (testErr: any) {
+      const msg = testErr?.message || String(testErr);
+      const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+      target.status = isQuota ? 'quota_exceeded' : 'error';
+      target.lastTested = new Date().toISOString();
+      target.errorMessage = msg;
+      saveAdminKeys();
+
+      return res.json({
+        success: false,
+        status: target.status,
+        message: isQuota ? 'Had kuota Gemini API tercapai (429).' : `Ralat kunci: ${msg}`,
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal menguji kunci', details: err?.message });
+  }
+});
+
+// Admin API: Test all keys
+app.post('/api/admin/test-all-keys', async (req, res) => {
+  try {
+    let active = 0;
+    let failed = 0;
+
+    for (const item of memoryAdminKeys) {
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: item.key,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+        });
+        const resp = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: 'Jawab OK.',
+        });
+        if (resp && resp.text) {
+          item.status = 'active';
+          item.lastTested = new Date().toISOString();
+          item.errorMessage = undefined;
+          active++;
+        }
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+        item.status = isQuota ? 'quota_exceeded' : 'error';
+        item.lastTested = new Date().toISOString();
+        item.errorMessage = msg;
+        failed++;
+      }
+    }
+
+    saveAdminKeys();
+
+    res.json({
+      success: true,
+      totalTested: memoryAdminKeys.length,
+      activeCount: active,
+      failedCount: failed,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal menguji semua kunci', details: err?.message });
+  }
+});
+
+// Check status of configured Gemini API Keys on server
 app.get('/api/gemini-keys-status', (req, res) => {
   const keys = getAvailableGeminiApiKeys();
   res.json({
@@ -48,8 +299,8 @@ app.get('/api/gemini-keys-status', (req, res) => {
     keyCount: keys.length,
     message:
       keys.length > 0
-        ? `${keys.length} Gemini API Key dikesan pada pelayan.`
-        : 'Tiada Gemini API Key dikesan dalam persekitaran pelayan (.env). Sistem menggunakan enjin optik tempatan 6 titik untuk menanda soalan.',
+        ? `${keys.length} Gemini API Key aktif sedia ada dalam kolam sistem (Termasuk kunci Admin & pelayan).`
+        : 'Tiada Gemini API Key dikesan. Sila masukkan kunci API dalam bahagian Admin Sistem atau fail .env.',
   });
 });
 
@@ -118,10 +369,14 @@ Jangan masukkan sebarang teks lain di luar JSON.
           const parsed = JSON.parse(jsonString);
 
           if (parsed && parsed.studentName) {
+            markKeyStatus(currentKey, 'active');
             return res.json({ success: true, studentName: parsed.studentName });
           }
         } catch (e: any) {
-          console.warn(`[Gemini Name OCR] Ralat kunci (...${currentKey.slice(-4)}):`, e?.message);
+          const msg = e?.message || String(e);
+          const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+          markKeyStatus(currentKey, isQuota ? 'quota_exceeded' : 'error', msg);
+          console.warn(`[Gemini Name OCR] Ralat kunci (...${currentKey.slice(-4)}):`, msg);
         }
       }
     }
@@ -273,10 +528,14 @@ FORMAT RESPON (JSON SAHAJA):
           const jsonString = jsonMatch[1] || rawText;
 
           successfulResult = JSON.parse(jsonString);
+          markKeyStatus(currentKey, 'active');
           break; // Key succeeded!
         } catch (geminiError: any) {
           lastError = geminiError;
-          console.warn(`[Gemini Failover Server] Kunci API (...${currentKey.slice(-4)}) ralat/kuota: ${geminiError?.message || geminiError}. Mencuba kunci seterusnya...`);
+          const msg = geminiError?.message || String(geminiError);
+          const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+          markKeyStatus(currentKey, isQuota ? 'quota_exceeded' : 'error', msg);
+          console.warn(`[Gemini Failover Server] Kunci API (...${currentKey.slice(-4)}) ralat/kuota: ${msg}. Mencuba kunci seterusnya...`);
         }
       }
 

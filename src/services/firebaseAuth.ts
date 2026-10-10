@@ -65,6 +65,28 @@ export const getGoogleAccountAvatar = (email: string, name?: string): string => 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+/**
+ * Decode Google JWT Credential (ID Token) safely without external libraries
+ */
+export const decodeGoogleJwt = (
+  credential: string
+): { email?: string; name?: string; picture?: string; sub?: string } => {
+  try {
+    const base64Url = credential.split('.')[1];
+    if (!base64Url) return {};
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return {};
+  }
+};
+
 export const getGoogleClientId = (): string => {
   return (
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID) ||
@@ -74,7 +96,7 @@ export const getGoogleClientId = (): string => {
 };
 
 /**
- * Attempt Google Sign-In via Google Identity Services (GIS) OAuth
+ * Attempt Google Sign-In via Google Identity Services (GIS) OAuth with strict timeout
  */
 const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> => {
   return new Promise((resolve) => {
@@ -82,6 +104,20 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
       resolve(null);
       return;
     }
+
+    let isResolved = false;
+    const safeResolve = (res: GoogleAuthResult | null) => {
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timer);
+        resolve(res);
+      }
+    };
+
+    // Prevent hanging forever if user closes popup or Google shows Error 400
+    const timer = setTimeout(() => {
+      safeResolve(null);
+    }, 15000);
 
     try {
       const clientId = getGoogleClientId();
@@ -92,7 +128,7 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
         prompt: 'select_account',
         callback: async (tokenResponse: any) => {
           if (!tokenResponse || !tokenResponse.access_token) {
-            resolve(null);
+            safeResolve(null);
             return;
           }
 
@@ -117,7 +153,7 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
               }
             }
 
-            resolve({
+            safeResolve({
               email,
               displayName,
               photoURL,
@@ -125,17 +161,17 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
               user: { email, displayName, photoURL } as User,
             });
           } catch {
-            resolve(null);
+            safeResolve(null);
           }
         },
         error_callback: () => {
-          resolve(null);
+          safeResolve(null);
         },
       });
 
       tokenClient.requestAccessToken();
     } catch {
-      resolve(null);
+      safeResolve(null);
     }
   });
 };
@@ -180,7 +216,7 @@ export const signInWithGoogle = async (): Promise<GoogleAuthResult> => {
       user: result.user,
     };
   } catch (error: any) {
-    console.error('Google Sign In error:', error);
+    console.warn('Google Sign In caught error:', error);
     throw error;
   } finally {
     isSigningIn = false;
