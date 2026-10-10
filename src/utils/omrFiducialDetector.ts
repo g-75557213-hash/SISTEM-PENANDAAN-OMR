@@ -1,7 +1,7 @@
-// High-Speed Computer Vision OMR Optical Grid Engine (6 Fiducial Points)
+// High-Speed Computer Vision OMR Optical Grid Engine (6 Fiducial Points + Row Timing Marks)
 // Piecewise Bi-Linear Registration & Optical Mark Recognition across 6 Corner Guide Markers.
 // Pure geometric and mathematical mark recognition with millimeter accuracy.
-// AI is used for Student Name OCR and intelligent secondary verification when needed.
+// AI is used strictly for Student Name OCR.
 
 export interface Point2D {
   x: number;
@@ -44,7 +44,11 @@ export interface QuestionDetectedAnswer {
     xmin: number;
     ymax: number;
     xmax: number;
+    markedBubble?: { x: number; y: number };
+    correctBubble?: { x: number; y: number };
+    rowTimingMark?: { x: number; y: number; found: boolean };
   };
+  bubbleCenters?: Record<string, { x: number; y: number }>;
   intensities: Record<string, number>; // fill ratio / darkness per option
 }
 
@@ -82,8 +86,163 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Detect the 6 black fiducial corner markers on the sheet using adaptive thresholding.
+ * Find solid dark square blob within a specific zone.
+ * Unlike naive pixel thresholding, this strictly checks for:
+ * 1. Compact bounding box (width & height within expected fiducial square range).
+ * 2. High solidity (density >= 0.55), distinguishing it from hollow text characters or borders.
+ * 3. Square aspect ratio (between 0.65 and 1.55).
+ * 4. Isolation from the student name box (strictly bounded within the paper margins).
+ */
+function findSolidSquareBlobInZone(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  zone: { x1: number; x2: number; y1: number; y2: number },
+  cornerType: 'TL' | 'TR' | 'ML' | 'MR' | 'BL' | 'BR'
+): MarkerSquare {
+  const minDim = Math.min(width, height);
+  // Expected marker size on template is ~34px out of 1240 (~2.7% of width).
+  // Allow between 1.2% and 5.5% of dimension.
+  const minMarkerPx = Math.max(10, Math.round(minDim * 0.014));
+  const maxMarkerPx = Math.max(30, Math.round(minDim * 0.058));
+
+  // 1. Sample paper baseline brightness in this local quadrant
+  let brightnessSum = 0;
+  let brightnessCount = 0;
+  const step = Math.max(2, Math.floor(minDim / 200));
+
+  for (let y = zone.y1; y < zone.y2; y += step * 2) {
+    for (let x = zone.x1; x < zone.x2; x += step * 2) {
+      const idx = (y * width + x) * 4;
+      const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+      brightnessSum += b;
+      brightnessCount++;
+    }
+  }
+  const avgZoneBrightness = brightnessCount > 0 ? brightnessSum / brightnessCount : 220;
+  const darkThreshold = Math.min(140, Math.max(45, avgZoneBrightness * 0.62));
+
+  // 2. Identify candidate dark seeds and explore solid bounding boxes
+  let bestCandidate: MarkerSquare | null = null;
+  let bestScore = -1;
+
+  // Search grid
+  const scanStep = Math.max(2, Math.floor(minMarkerPx * 0.35));
+
+  for (let sy = zone.y1; sy < zone.y2 - minMarkerPx; sy += scanStep) {
+    for (let sx = zone.x1; sx < zone.x2 - minMarkerPx; sx += scanStep) {
+      const idx = (sy * width + sx) * 4;
+      const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+
+      if (b < darkThreshold) {
+        // Expand bounding box around dark cluster
+        let minX = sx;
+        let maxX = sx;
+        let minY = sy;
+        let maxY = sy;
+        let darkPixels = 0;
+
+        // Quick probe bounding extent
+        const probeLimit = maxMarkerPx;
+        for (let py = Math.max(zone.y1, sy - 4); py <= Math.min(zone.y2, sy + probeLimit); py += 2) {
+          for (let px = Math.max(zone.x1, sx - 4); px <= Math.min(zone.x2, sx + probeLimit); px += 2) {
+            const pIdx = (py * width + px) * 4;
+            const pb = (data[pIdx] * 299 + data[pIdx + 1] * 587 + data[pIdx + 2] * 114) / 1000;
+            if (pb < darkThreshold) {
+              darkPixels++;
+              if (px < minX) minX = px;
+              if (px > maxX) maxX = px;
+              if (py < minY) minY = py;
+              if (py > maxY) maxY = py;
+            }
+          }
+        }
+
+        const bw = maxX - minX + 1;
+        const bh = maxY - minY + 1;
+
+        if (bw >= minMarkerPx && bw <= maxMarkerPx && bh >= minMarkerPx && bh <= maxMarkerPx) {
+          const area = bw * bh;
+          // Sample full density in bounding box
+          let boxDarkCount = 0;
+          let boxTotal = 0;
+          let sumX = 0;
+          let sumY = 0;
+
+          for (let by = minY; by <= maxY; by++) {
+            for (let bx = minX; bx <= maxX; bx++) {
+              const bIdx = (by * width + bx) * 4;
+              const pb = (data[bIdx] * 299 + data[bIdx + 1] * 587 + data[bIdx + 2] * 114) / 1000;
+              if (pb < darkThreshold) {
+                boxDarkCount++;
+                sumX += bx;
+                sumY += by;
+              }
+              boxTotal++;
+            }
+          }
+
+          const solidity = boxTotal > 0 ? boxDarkCount / boxTotal : 0;
+          const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+
+          // A fiducial square is SOLID (solidity > 0.58) and near 1:1 aspect ratio (aspect <= 1.55)
+          if (solidity >= 0.58 && aspect <= 1.55) {
+            // Distance preference towards expected corner margin
+            let cornerDist = 0;
+            if (cornerType === 'TL') cornerDist = minX + minY;
+            else if (cornerType === 'TR') cornerDist = (width - maxX) + minY;
+            else if (cornerType === 'ML') cornerDist = minX + Math.abs((minY + maxY) / 2 - height * 0.52);
+            else if (cornerType === 'MR') cornerDist = (width - maxX) + Math.abs((minY + maxY) / 2 - height * 0.52);
+            else if (cornerType === 'BL') cornerDist = minX + (height - maxY);
+            else if (cornerType === 'BR') cornerDist = (width - maxX) + (height - maxY);
+
+            // Score combines solidity, squareness, and proximity to the corner
+            const score = solidity * 100 - (aspect - 1) * 30 - (cornerDist / minDim) * 20;
+
+            if (score > bestScore) {
+              bestScore = score;
+              const cx = boxDarkCount > 0 ? Math.round(sumX / boxDarkCount) : Math.round((minX + maxX) / 2);
+              const cy = boxDarkCount > 0 ? Math.round(sumY / boxDarkCount) : Math.round((minY + maxY) / 2);
+
+              bestCandidate = {
+                x: minX,
+                y: minY,
+                w: bw,
+                h: bh,
+                cx,
+                cy,
+                found: true,
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (bestCandidate) {
+    return bestCandidate;
+  }
+
+  // Fallback if marker was slightly obscured or outside boundary
+  const defCx = Math.round((zone.x1 + zone.x2) / 2);
+  const defCy = Math.round((zone.y1 + zone.y2) / 2);
+  return {
+    x: defCx - Math.round(minMarkerPx / 2),
+    y: defCy - Math.round(minMarkerPx / 2),
+    w: minMarkerPx,
+    h: minMarkerPx,
+    cx: defCx,
+    cy: defCy,
+    found: false,
+  };
+}
+
+/**
+ * Detect the 6 black fiducial corner markers on the sheet using robust blob geometry.
  * Standard template defines 6 black squares (Top-L, Top-R, Mid-L, Mid-R, Bot-L, Bot-R).
+ * Critical constraint: The Top-Left marker search is restricted to the outer margin (x <= 16%),
+ * completely isolating it from the Student Name (NAMA) box which is in the central header.
  */
 export function findSixFiducialMarkers(
   ctx: CanvasRenderingContext2D,
@@ -94,93 +253,24 @@ export function findSixFiducialMarkers(
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
 
-    // Search zones for the 6 markers:
+    // Search zones for the 6 markers strictly confined to margins:
+    // Left markers are in x: 0..16% (to the left of NAMA box!)
+    // Right markers are in x: 84%..100%
     const zones = {
-      topLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: 0, y2: Math.floor(height * 0.28) },
-      topRight: { x1: Math.floor(width * 0.75), x2: width, y1: 0, y2: Math.floor(height * 0.28) },
-      midLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: Math.floor(height * 0.35), y2: Math.floor(height * 0.65) },
-      midRight: { x1: Math.floor(width * 0.75), x2: width, y1: Math.floor(height * 0.35), y2: Math.floor(height * 0.65) },
-      botLeft: { x1: 0, x2: Math.floor(width * 0.25), y1: Math.floor(height * 0.72), y2: height },
-      botRight: { x1: Math.floor(width * 0.75), x2: width, y1: Math.floor(height * 0.72), y2: height },
+      topLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: 0, y2: Math.floor(height * 0.22) },
+      topRight: { x1: Math.floor(width * 0.82), x2: width, y1: 0, y2: Math.floor(height * 0.22) },
+      midLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
+      midRight: { x1: Math.floor(width * 0.82), x2: width, y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
+      botLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: Math.floor(height * 0.78), y2: height },
+      botRight: { x1: Math.floor(width * 0.82), x2: width, y1: Math.floor(height * 0.78), y2: height },
     };
 
-    const findDarkSquareInZone = (zone: { x1: number; x2: number; y1: number; y2: number }): MarkerSquare => {
-      // 1. Find min brightness in zone to set adaptive threshold
-      let minBrightness = 255;
-      for (let y = zone.y1; y < zone.y2; y += 4) {
-        for (let x = zone.x1; x < zone.x2; x += 4) {
-          const idx = (y * width + x) * 4;
-          const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
-          if (b < minBrightness) minBrightness = b;
-        }
-      }
-
-      // Adaptive threshold: must be significantly darker than background paper
-      const threshold = Math.min(130, Math.max(50, minBrightness + 45));
-
-      let sumX = 0;
-      let sumY = 0;
-      let count = 0;
-      let minX = zone.x2;
-      let maxX = zone.x1;
-      let minY = zone.y2;
-      let maxY = zone.y1;
-
-      for (let y = zone.y1; y < zone.y2; y += 2) {
-        for (let x = zone.x1; x < zone.x2; x += 2) {
-          const idx = (y * width + x) * 4;
-          const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
-          if (b < threshold) {
-            sumX += x;
-            sumY += y;
-            count++;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-          }
-        }
-      }
-
-      const w = maxX > minX ? maxX - minX : 34;
-      const h = maxY > minY ? maxY - minY : 34;
-      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h));
-      const isDetected = count >= 16 && aspect <= 3.2 && minBrightness < 140;
-
-      if (count > 16 && maxX > minX && maxY > minY) {
-        const cx = Math.round(sumX / count);
-        const cy = Math.round(sumY / count);
-        return {
-          x: minX,
-          y: minY,
-          w,
-          h,
-          cx,
-          cy,
-          found: isDetected,
-        };
-      }
-
-      // Fallback coordinate for 1240x1754 template scale
-      const defaultCx = (zone.x1 + zone.x2) / 2;
-      const defaultCy = (zone.y1 + zone.y2) / 2;
-      return {
-        x: defaultCx - 17,
-        y: defaultCy - 17,
-        w: 34,
-        h: 34,
-        cx: defaultCx,
-        cy: defaultCy,
-        found: false,
-      };
-    };
-
-    const tl = findDarkSquareInZone(zones.topLeft);
-    const tr = findDarkSquareInZone(zones.topRight);
-    const ml = findDarkSquareInZone(zones.midLeft);
-    const mr = findDarkSquareInZone(zones.midRight);
-    const bl = findDarkSquareInZone(zones.botLeft);
-    const br = findDarkSquareInZone(zones.botRight);
+    const tl = findSolidSquareBlobInZone(data, width, height, zones.topLeft, 'TL');
+    const tr = findSolidSquareBlobInZone(data, width, height, zones.topRight, 'TR');
+    const ml = findSolidSquareBlobInZone(data, width, height, zones.midLeft, 'ML');
+    const mr = findSolidSquareBlobInZone(data, width, height, zones.midRight, 'MR');
+    const bl = findSolidSquareBlobInZone(data, width, height, zones.botLeft, 'BL');
+    const br = findSolidSquareBlobInZone(data, width, height, zones.botRight, 'BR');
 
     const foundCount = [tl, tr, ml, mr, bl, br].filter((m) => m.found).length;
 
@@ -202,6 +292,7 @@ export function findSixFiducialMarkers(
 
 /**
  * Crop the Student Name (NAMA) box area from the canvas to send exclusively to AI OCR.
+ * Strictly crops ONLY the top header row 1 of the info container, well above the exam answer grid.
  */
 export function cropStudentNameBoxDataUrl(
   canvas: HTMLCanvasElement,
@@ -211,16 +302,20 @@ export function cropStudentNameBoxDataUrl(
     const w = canvas.width;
     const h = canvas.height;
 
-    let cropX = Math.round(w * 0.08);
-    let cropY = Math.round(h * 0.07);
-    let cropW = Math.round(w * 0.84);
-    let cropH = Math.round(h * 0.09);
+    let cropX = Math.round(w * 0.12);
+    let cropY = Math.round(h * 0.08);
+    let cropW = Math.round(w * 0.76);
+    let cropH = Math.round(h * 0.075);
 
-    if (markers) {
-      cropX = Math.round(markers.topLeft.cx + markers.topLeft.w * 0.5);
-      cropY = Math.max(0, Math.round(markers.topLeft.cy - 12));
-      cropW = Math.round(markers.topRight.cx - cropX);
-      cropH = Math.round(h * 0.088);
+    if (markers && (markers.topLeft.found || markers.topRight.found)) {
+      const leftX = markers.topLeft.found ? markers.topLeft.cx + markers.topLeft.w * 0.8 : w * 0.08;
+      const rightX = markers.topRight.found ? markers.topRight.cx - markers.topRight.w * 0.8 : w * 0.92;
+      const topY = markers.topLeft.found ? markers.topLeft.cy - 10 : h * 0.08;
+
+      cropX = Math.round(leftX);
+      cropY = Math.max(0, Math.round(topY));
+      cropW = Math.round(rightX - leftX);
+      cropH = Math.round(h * 0.08);
     }
 
     const cropCanvas = document.createElement('canvas');
@@ -249,8 +344,12 @@ export function cropStudentNameBoxDataUrl(
 }
 
 /**
- * Core Algorithm: Optical Mark Recognition using Piecewise Bi-Linear 6-Point Registration.
- * Accurately tracks every target row and bubble by warping coordinate space across the 6 fiducial points.
+ * Core Algorithm: Optical Mark Recognition using Piecewise Bi-Linear 6-Point Registration
+ * COMBINED WITH ACTIVE DETECTION OF THE KOTAK HITAM NOMBOR JAWAPAN (ROW TIMING MARKS).
+ *
+ * This completely prevents the system from confusing the Student Name (NAMA) box with Question 1!
+ * Question 1 starts STRICTLY where the first Row Timing Mark (Kotak Hitam Jalur Y) appears beside
+ * question number 1, directly under the column headers A, B, C, D, E.
  */
 export function processOMRGridAnswers(
   canvas: HTMLCanvasElement,
@@ -286,7 +385,8 @@ export function processOMRGridAnswers(
    * by interpolating through Top, Middle, and Bottom fiducial anchors.
    */
   const mapPoint = (refX: number, refY: number): { x: number; y: number } => {
-    if (!markers) {
+    if (!markers || markers.foundCount < 2) {
+      // Default proportional mapping
       return {
         x: (refX / REF_W) * width,
         y: (refY / REF_H) * height,
@@ -340,6 +440,9 @@ export function processOMRGridAnswers(
     optionsCount === 4 ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C', 'D', 'E'];
 
   // Template reference coordinates:
+  // Note: NAMA box is at Y: 145 to 270.
+  // Column Header timing marks are at Y: 306.
+  // QUESTION 1 gridStartY starts at Y: 330!
   const refGridStartY = 330;
   const refAvailableGridHeight = REF_H - refGridStartY - 240; // 1184
   const refRowHeight = Math.min(52, Math.max(26, Math.floor(refAvailableGridHeight / questionsPerColumn)));
@@ -353,6 +456,26 @@ export function processOMRGridAnswers(
   const refQNumWidth = 44;
   const refBubblesAreaWidth = optionsList.length * (refBubbleRadius * 2 + 16);
   const refBubbleSpacing = Math.floor(refBubblesAreaWidth / optionsList.length);
+
+  /**
+   * Helper to sample paper baseline brightness in a small local patch
+   */
+  const getLocalPaperBaseline = (centerX: number, centerY: number): number => {
+    let sum = 0;
+    let count = 0;
+    for (let dy = -4; dy <= 4; dy += 2) {
+      for (let dx = -4; dx <= 4; dx += 2) {
+        const px = Math.round(centerX + dx);
+        const py = Math.round(centerY + dy);
+        if (px >= 0 && px < width && py >= 0 && py < height) {
+          const idx = (py * width + px) * 4;
+          sum += (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+          count++;
+        }
+      }
+    }
+    return count > 0 ? sum / count : 220;
+  };
 
   /**
    * Helper to sample the INNER CORE of a bubble (radius * 0.68)
@@ -403,6 +526,73 @@ export function processOMRGridAnswers(
     return { fillRatio, avgBrightness, score };
   };
 
+  /**
+   * 2. DETEKSI KOTAK HITAM NOMBOR JAWAPAN (ROW TIMING TRACK DETECTOR)
+   * On the template, each question row has a solid black box beside its question number:
+   * refColX - 24, refCenterY - 6 (size 16x12 px).
+   * Above Row 1 is the Column Timing Mark and then the NAMA box.
+   * By scanning the timing track column vertically, we find the EXACT vertical coordinate of Row 1
+   * and calibrate the true vertical scale for every question!
+   */
+  const columnRowYOffsets: Record<number, number[]> = {};
+
+  for (let col = 0; col < numColumns; col++) {
+    const refColX = refStartX + col * (refColumnWidth + refColumnGap);
+    const expectedTimingX = refColX - 20;
+
+    // Scan vertical track for black timing blocks
+    const rowYList: number[] = [];
+
+    for (let r = 0; r < questionsPerColumn; r++) {
+      const qNum = col * questionsPerColumn + r + 1;
+      if (qNum > totalQuestions) break;
+
+      const refRowY = refGridStartY + r * refRowHeight;
+      const refCenterY = refRowY + refRowHeight / 2;
+
+      // Map expected timing mark center
+      const expectedPt = mapPoint(expectedTimingX, refCenterY);
+
+      // Search in window around expected timing block
+      const searchYRadius = Math.max(10, Math.round(refRowHeight * 0.45));
+      const searchXRadius = Math.max(12, Math.round(refRowHeight * 0.35));
+
+      let darkSumX = 0;
+      let darkSumY = 0;
+      let darkCount = 0;
+
+      const localBase = getLocalPaperBaseline(expectedPt.x - searchXRadius, expectedPt.y);
+      const markThreshold = Math.min(135, localBase * 0.70);
+
+      for (let dy = -searchYRadius; dy <= searchYRadius; dy += 2) {
+        for (let dx = -searchXRadius; dx <= searchXRadius; dx += 2) {
+          const tx = Math.round(expectedPt.x + dx);
+          const ty = Math.round(expectedPt.y + dy);
+          if (tx >= 0 && tx < width && ty >= 0 && ty < height) {
+            const idx = (ty * width + tx) * 4;
+            const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+            if (b < markThreshold) {
+              darkSumX += tx;
+              darkSumY += ty;
+              darkCount++;
+            }
+          }
+        }
+      }
+
+      // If a solid timing mark was detected (solid black rectangle ~16x12 px)
+      if (darkCount >= 10) {
+        const detectedY = darkSumY / darkCount;
+        rowYList.push(detectedY);
+      } else {
+        // Fallback to geometric piecewise interpolation
+        rowYList.push(expectedPt.y);
+      }
+    }
+
+    columnRowYOffsets[col] = rowYList;
+  }
+
   const detailList: QuestionDetectedAnswer[] = [];
   let correctCount = 0;
 
@@ -416,100 +606,48 @@ export function processOMRGridAnswers(
     const refCenterY = refRowY + refRowHeight / 2;
     const refBubblesStartX = refColX + refQNumWidth + 12;
 
-    // Piecewise mapped row center
-    const mappedRowCenter = mapPoint(refColX + refColumnWidth / 2, refCenterY);
     const mappedColStart = mapPoint(refColX, refRowY);
     const mappedColEnd = mapPoint(refColX + refColumnWidth, refRowY + refRowHeight);
 
-    // 1. DETEKSI KOTAK HITAM JALUR Y (Optical Row Timing Track Mark)
-    // Mencari pusat kotak hitam penjajaran di tepi baris soalan (refColX - 24, refCenterY)
-    const expectedTimingPt = mapPoint(refColX - 16, refCenterY);
-    let timingSumY = 0;
-    let timingDarkPixels = 0;
-    const searchSpanY = Math.max(8, Math.round(refRowHeight * 0.42));
-    const searchSpanX = 14;
+    // Active Row Center locked to Kotak Hitam Nombor Jawapan
+    const detectedRowYList = columnRowYOffsets[colIdx];
+    let fineTunedCenterY = mapPoint(refColX + refColumnWidth / 2, refCenterY).y;
 
-    for (let dy = -searchSpanY; dy <= searchSpanY; dy++) {
-      for (let dx = -searchSpanX; dx <= searchSpanX; dx++) {
-        const tx = Math.round(expectedTimingPt.x + dx);
-        const ty = Math.round(expectedTimingPt.y + dy);
-        if (tx >= 0 && tx < width && ty >= 0 && ty < height) {
-          const idx = (ty * width + tx) * 4;
-          const brightness = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
-          if (brightness < 125) {
-            timingSumY += ty;
-            timingDarkPixels++;
-          }
-        }
-      }
+    let isTimingMarkFound = false;
+    let timingMarkX = mapPoint(refColX - 20, refCenterY).x;
+
+    if (detectedRowYList && detectedRowYList[rowInCol] !== undefined) {
+      fineTunedCenterY = detectedRowYList[rowInCol];
+      isTimingMarkFound = true;
     }
-
-    let timingY = mappedRowCenter.y;
-    if (timingDarkPixels >= 8) {
-      timingY = timingSumY / timingDarkPixels;
-    }
-
-    // Row Center Fine-Tuning: gabungkan pengesanan Kotak Hitam Jalur Y dengan analisis kontras
-    let bestDy = 0;
-    let maxContrast = -1;
-    for (let dy = -4; dy <= 4; dy += 2) {
-      const checkY = Math.round(timingY + dy);
-      if (checkY >= 0 && checkY < height) {
-        let rowSum = 0;
-        let rowSqSum = 0;
-        let rowSamples = 0;
-        for (let step = 0; step < 10; step++) {
-          const sampleX = Math.round(mappedColStart.x + (step / 9) * (mappedColEnd.x - mappedColStart.x));
-          if (sampleX >= 0 && sampleX < width) {
-            const idx = (checkY * width + sampleX) * 4;
-            const b = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
-            rowSum += b;
-            rowSqSum += b * b;
-            rowSamples++;
-          }
-        }
-        if (rowSamples > 0) {
-          const mean = rowSum / rowSamples;
-          const variance = rowSqSum / rowSamples - mean * mean;
-          if (variance > maxContrast) {
-            maxContrast = variance;
-            bestDy = dy;
-          }
-        }
-      }
-    }
-
-    const fineTunedCenterY = timingY + bestDy;
 
     // Local paper baseline measurement
     const baselinePoint = mapPoint(refColX + refQNumWidth + 4, refCenterY);
-    let baselineSum = 0;
-    let baselineCount = 0;
-    for (let dy = -3; dy <= 3; dy++) {
-      const py = Math.round(baselinePoint.y + dy);
-      const px = Math.round(baselinePoint.x);
-      if (px >= 0 && px < width && py >= 0 && py < height) {
-        const idx = (py * width + px) * 4;
-        baselineSum += (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
-        baselineCount++;
-      }
-    }
-    const rowBaselineBrightness = baselineCount > 0 ? baselineSum / baselineCount : 220;
+    const rowBaselineBrightness = getLocalPaperBaseline(baselinePoint.x, fineTunedCenterY);
 
     const scaleFactor = Math.abs(mappedColEnd.x - mappedColStart.x) / refColumnWidth;
     const actualBubbleRadius = Math.max(6, refBubbleRadius * scaleFactor);
 
     const scores: Record<string, number> = {};
     const fillRatios: Record<string, number> = {};
+    const bubbleCenters: Record<string, { x: number; y: number }> = {};
 
     for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
       const opt = optionsList[optIdx];
       const refBx = refBubblesStartX + optIdx * refBubbleSpacing + refBubbleSpacing / 2;
       const mappedBubble = mapPoint(refBx, refCenterY);
 
+      // Lock Y to the verified row timing mark center
+      const bubbleCenter = {
+        x: Math.round(mappedBubble.x),
+        y: Math.round(fineTunedCenterY),
+      };
+
+      bubbleCenters[opt] = bubbleCenter;
+
       const metrics = getBubbleCoreMetrics(
-        mappedBubble.x,
-        fineTunedCenterY,
+        bubbleCenter.x,
+        bubbleCenter.y,
         actualBubbleRadius,
         rowBaselineBrightness
       );
@@ -587,6 +725,9 @@ export function processOMRGridAnswers(
     const boxYmin = Math.round(((fineTunedCenterY - actualBubbleRadius * 1.5) / height) * 1000);
     const boxYmax = Math.round(((fineTunedCenterY + actualBubbleRadius * 1.5) / height) * 1000);
 
+    const markedCoord = bubbleCenters[studentAns] || undefined;
+    const correctCoord = bubbleCenters[correctAns] || undefined;
+
     detailList.push({
       nombor_soalan: q,
       jawapan_pelajar: studentAns,
@@ -602,7 +743,15 @@ export function processOMRGridAnswers(
         xmin: boxXmin,
         ymax: boxYmax,
         xmax: boxXmax,
+        markedBubble: markedCoord,
+        correctBubble: correctCoord,
+        rowTimingMark: {
+          x: Math.round(timingMarkX),
+          y: Math.round(fineTunedCenterY),
+          found: isTimingMarkFound,
+        },
       },
+      bubbleCenters,
       intensities: fillRatios,
     });
   }
@@ -629,7 +778,7 @@ export function processOMRGridAnswers(
       status_kelulusan: isCemerlang ? 'CEMERLANG' : isPassed ? 'LULUS' : 'GAGAL',
     },
     catatan_teknikal:
-      'Ditanda menggunakan Enjin Optik Piecewise 6 Titik Penjuru (Bi-Linear Registration) berketepatan tinggi',
+      'Ditanda menggunakan Enjin Optik Piecewise 6 Titik Penjuru & Pengecaman Kotak Hitam Nombor Jawapan',
     markersFound: markers,
   };
 }

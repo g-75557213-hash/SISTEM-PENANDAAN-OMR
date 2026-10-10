@@ -112,17 +112,41 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           ctx.strokeRect(boxXmin, boxYmin, boxXmax - boxXmin, boxH);
         }
 
-        // Target bubble X coordinate for mark
+        // Target bubble X & Y coordinate for mark:
+        // Priority 1: Exact measured pixel coordinates from row timing tracks & bubble centers
         let markTargetX = boxXmin + (boxXmax - boxXmin) * 0.28;
-        if (studentOpt && optToIndex[studentOpt] !== undefined) {
+        let actualCenterY = centerY;
+
+        if (item.box?.markedBubble && item.box.markedBubble.x > 0) {
+          markTargetX = item.box.markedBubble.x;
+          actualCenterY = item.box.markedBubble.y;
+        } else if (item.bubbleCenters && studentOpt && item.bubbleCenters[studentOpt]) {
+          markTargetX = item.bubbleCenters[studentOpt].x;
+          actualCenterY = item.bubbleCenters[studentOpt].y;
+        } else if (studentOpt && optToIndex[studentOpt] !== undefined) {
           markTargetX = optionsStartX + optToIndex[studentOpt] * optionsGap + optionsGap * 0.5;
+        }
+
+        // Draw Bounding Boxes if enabled
+        if (showBoxes) {
+          ctx.strokeStyle = item.status === 'BETUL' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(boxXmin, boxYmin, boxXmax - boxXmin, boxH);
+
+          // Highlight detected row timing mark
+          if (item.box?.rowTimingMark?.found) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.5)';
+            ctx.fillRect(item.box.rowTimingMark.x - 7, item.box.rowTimingMark.y - 5, 14, 10);
+            ctx.restore();
+          }
         }
 
         // 2. Color-coded Bubble Ring around student's answer (Hijau = Betul, Merah = Salah, Kuning = Tidak Jelas)
         ctx.save();
         const highlightRadius = Math.max(10, Math.round(boxH * 0.38));
         ctx.beginPath();
-        ctx.arc(markTargetX, centerY, highlightRadius, 0, Math.PI * 2);
+        ctx.arc(markTargetX, actualCenterY, highlightRadius, 0, Math.PI * 2);
         if (item.status === 'BETUL') {
           ctx.strokeStyle = '#16a34a'; // Hijau
           ctx.lineWidth = 2.5;
@@ -135,6 +159,19 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
           ctx.fill();
           ctx.stroke();
+
+          // Dotted guide ring on the correct answer bubble if available
+          const correctCoord = item.box?.correctBubble || (item.bubbleCenters && item.bubbleCenters[correctOpt]);
+          if (correctCoord) {
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = '#16a34a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(correctCoord.x, correctCoord.y, highlightRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
         } else {
           // TIDAK JELAS / KOSONG / SAMAR
           ctx.strokeStyle = '#eab308'; // Kuning
@@ -158,7 +195,7 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             // Slight glow
             ctx.shadowColor = 'rgba(34, 197, 94, 0.4)';
             ctx.shadowBlur = 4;
-            ctx.fillText('✔', markTargetX, centerY);
+            ctx.fillText('✔', markTargetX, actualCenterY);
           } else if (item.status === 'SALAH') {
             // Bold Red Cross ✘
             ctx.fillStyle = '#dc2626';
@@ -168,7 +205,7 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             ctx.textBaseline = 'middle';
             ctx.shadowColor = 'rgba(239, 68, 68, 0.4)';
             ctx.shadowBlur = 4;
-            ctx.fillText('✘', markTargetX, centerY);
+            ctx.fillText('✘', markTargetX, actualCenterY);
           } else if (item.status === 'KOSONG') {
             // Kuning untuk jawapan kosong
             ctx.fillStyle = '#eab308';
@@ -178,8 +215,8 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             ctx.textBaseline = 'middle';
             ctx.shadowColor = 'rgba(234, 179, 8, 0.4)';
             ctx.shadowBlur = 4;
-            ctx.fillText('○', markTargetX, centerY);
-          } else if (item.status === 'DOUBLE_MARK') {
+            ctx.fillText('○', markTargetX, actualCenterY);
+          } else if (item.status === 'DOUBLE_MARK' || item.status === 'TIDAK_JELAS') {
             // Kuning untuk jawapan tidak jelas / samar / dwi-tanda
             ctx.fillStyle = '#eab308';
             ctx.strokeStyle = '#ca8a04';
@@ -188,7 +225,7 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             ctx.textBaseline = 'middle';
             ctx.shadowColor = 'rgba(234, 179, 8, 0.4)';
             ctx.shadowBlur = 4;
-            ctx.fillText('⚠', markTargetX, centerY);
+            ctx.fillText('⚠', markTargetX, actualCenterY);
           }
           ctx.restore();
         }
@@ -218,13 +255,13 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           ctx.strokeStyle = isSalah ? '#ef4444' : '#eab308';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.roundRect(labelX, centerY - pillHeight / 2, pillWidth, pillHeight, 3);
+          ctx.roundRect(labelX, actualCenterY - pillHeight / 2, pillWidth, pillHeight, 3);
           ctx.fill();
           ctx.stroke();
 
           // Text inside pill (Merah jika salah, Kuning/Amber jika tidak jelas/kosong)
           ctx.fillStyle = isSalah ? '#991b1b' : '#854d0e';
-          ctx.fillText(text, labelX + 6, centerY);
+          ctx.fillText(text, labelX + 6, actualCenterY);
           ctx.restore();
         }
       });

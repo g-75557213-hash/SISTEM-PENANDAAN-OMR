@@ -148,6 +148,21 @@ export default function App() {
         setCurrentUser(parsed);
         localStorage.setItem('omr_teacher_active_user', JSON.stringify(parsed));
         loadTeacherFolders(parsed.accessCode);
+
+        // Semak dan selaraskan profil terkini dari pelayan pusat di latar belakang
+        fetch('/api/teacher/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessCode: parsed.accessCode }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.user) {
+              setCurrentUser(data.user);
+              localStorage.setItem('omr_teacher_active_user', JSON.stringify(data.user));
+            }
+          })
+          .catch(() => {});
       } catch (e) {
         setIsAuthModalOpen(true);
       }
@@ -157,7 +172,7 @@ export default function App() {
     }
   }, []);
 
-  // Load teacher folders from storage (partitioned strictly per teacher accessCode)
+  // Load teacher folders from storage (partitioned strictly per teacher accessCode + diselaraskan dengan pelayan pusat)
   const loadTeacherFolders = (accessCode: string) => {
     const storageKey = `omr_folders_${accessCode}`;
     let savedData = localStorage.getItem(storageKey);
@@ -167,29 +182,63 @@ export default function App() {
       savedData = localStorage.getItem(`omr_folders_${currentUser.email}`);
     }
 
+    let initialFolders: ClassFolder[] = [];
     if (savedData) {
       try {
-        const folders = JSON.parse(savedData) as ClassFolder[];
-        setClassFolders(folders);
-        if (folders.length > 0) {
-          setActiveClassId(folders[0].id);
-          setActiveSubject(folders[0].subject || 'SAINS');
+        initialFolders = JSON.parse(savedData) as ClassFolder[];
+        setClassFolders(initialFolders);
+        if (initialFolders.length > 0) {
+          setActiveClassId(initialFolders[0].id);
+          setActiveSubject(initialFolders[0].subject || 'SAINS');
         }
       } catch (e) {
         setClassFolders([]);
       }
     } else {
-      // Empty initial state - NO sample classes inside!
       setClassFolders([]);
     }
+
+    // Selaraskan dengan pelayan pusat untuk memuatkan folder kelas & rekod semakan merentas peranti
+    fetch(`/api/teacher/folders/${encodeURIComponent(accessCode)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.folders)) {
+          if (data.folders.length > 0) {
+            // Gunakan data daripada pelayan pusat jika ada rekod
+            setClassFolders(data.folders);
+            localStorage.setItem(storageKey, JSON.stringify(data.folders));
+            setActiveClassId((prev) => (prev && data.folders.some((f: ClassFolder) => f.id === prev) ? prev : data.folders[0].id));
+          } else if (initialFolders.length > 0) {
+            // Jika pelayan belum ada data tetapi peranti ini ada data tempatan, hantar ke pelayan untuk diselaraskan
+            fetch(`/api/teacher/folders/${encodeURIComponent(accessCode)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folders: initialFolders }),
+            }).catch(() => {});
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Pelayan folders tidak dapat dicapai, menggunakan data storan tempatan:', err);
+      });
   };
 
-  // Save folders whenever updated for current teacher
+  // Save folders whenever updated for current teacher (Simpan ke storan setempat & pelayan pusat)
   const persistFolders = (folders: ClassFolder[]) => {
     setClassFolders(folders);
     if (currentUser) {
-      const storageKey = `omr_folders_${currentUser.accessCode || currentUser.id}`;
+      const code = currentUser.accessCode || currentUser.id;
+      const storageKey = `omr_folders_${code}`;
       localStorage.setItem(storageKey, JSON.stringify(folders));
+
+      // Hantar ke pelayan pusat untuk sinkronisasi merentas semua peranti
+      fetch(`/api/teacher/folders/${encodeURIComponent(code)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders }),
+      }).catch((err) => {
+        console.warn('Gagal menyimpan folders ke pelayan pusat:', err);
+      });
     }
   };
 
@@ -211,10 +260,24 @@ export default function App() {
     setIsAuthModalOpen(true);
   };
 
-  // Handle Profile Update
+  // Handle Profile Update (Kemaskini setempat & selaraskan ke pelayan)
   const handleUpdateUser = (updatedUser: TeacherUser) => {
     setCurrentUser(updatedUser);
     localStorage.setItem('omr_teacher_active_user', JSON.stringify(updatedUser));
+
+    // Selaraskan ke pelayan pusat
+    fetch('/api/teacher/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accessCode: updatedUser.accessCode,
+        name: updatedUser.name,
+        schoolName: updatedUser.schoolName,
+        avatarUrl: updatedUser.avatarUrl,
+      }),
+    }).catch((err) => {
+      console.warn('Gagal mengemas kini profil di pelayan pusat:', err);
+    });
   };
 
   // Save student result to active class folder

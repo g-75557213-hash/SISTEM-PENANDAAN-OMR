@@ -29,6 +29,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
   defaultCode = '',
 }) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Login form state
   const [inputCode, setInputCode] = useState(defaultCode);
@@ -95,8 +96,8 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Log In with existing code
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Handle Log In with existing code (Cross-device synced from central server)
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
@@ -110,57 +111,109 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       return;
     }
 
-    // Check if profile exists in saved profiles
-    const existing = savedProfiles.find(
-      (p) => p.accessCode.toUpperCase() === cleanCode
-    );
+    setIsSubmitting(true);
+    try {
+      // 1. Hubungi pelayan pusat untuk mendapatkan profil akaun tepat bagi kod ini
+      const res = await fetch('/api/teacher/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessCode: cleanCode }),
+      });
+      const data = await res.json();
 
-    let userToLogin: TeacherUser;
-    if (existing) {
-      userToLogin = existing;
-    } else {
-      // Check if user data exists under this code
+      if (res.ok && data.success && data.user) {
+        const userToLogin: TeacherUser = data.user;
+        localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(userToLogin));
+        persistProfileToList(userToLogin);
+        onLogin(userToLogin);
+        return;
+      }
+
+      // 2. Jika pelayan memaklumkan kod ini belum pernah didaftarkan
+      if (data.notFound) {
+        // Semak jika pengguna ini pernah mendaftar secara lokal pada peranti ini sebelum ini
+        const localData = localStorage.getItem(`omr_teacher_profile_${cleanCode}`);
+        if (localData) {
+          try {
+            const parsedLocal = JSON.parse(localData) as TeacherUser;
+            // Migrasi automatik ke pelayan pusat
+            const regRes = await fetch('/api/teacher/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accessCode: cleanCode,
+                name: parsedLocal.name,
+                schoolName: parsedLocal.schoolName,
+                avatarUrl: parsedLocal.avatarUrl,
+              }),
+            });
+            const regData = await regRes.json();
+            if (regData.success && regData.user) {
+              persistProfileToList(regData.user);
+              onLogin(regData.user);
+              return;
+            }
+          } catch {
+            // Abaikan ralat migrasi
+          }
+        }
+
+        setLoginError(
+          data.error ||
+            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Kod ini belum pernah didaftarkan di mana-mana peranti. Sila pastikan ejaan betul atau cipta akaun di tab 'Cipta Kod Baharu'.`
+        );
+        return;
+      }
+
+      setLoginError(data.error || 'Gagal mengesahkan kod akses dengan pelayan.');
+    } catch (err: any) {
+      // Fallback storan setempat jika internet / sambungan pelayan luar talian
+      console.warn('Pelayan tidak dapat dihubungi, menyemak storan tempatan:', err);
+      const existing = savedProfiles.find((p) => p.accessCode.toUpperCase() === cleanCode);
       const profileKey = `omr_teacher_profile_${cleanCode}`;
       const savedData = localStorage.getItem(profileKey);
 
-      if (savedData) {
-        try {
-          userToLogin = JSON.parse(savedData);
-        } catch {
-          userToLogin = {
-            id: `teacher_${cleanCode}`,
-            accessCode: cleanCode,
-            name: `Cikgu ${cleanCode}`,
-            schoolName: 'SMK JENERI',
-            avatarUrl: getTeacherAvatarSvg(cleanCode, `Cikgu ${cleanCode}`),
-            createdAt: new Date().toISOString(),
-          };
-        }
+      if (existing || savedData) {
+        const userToLogin: TeacherUser = existing || JSON.parse(savedData!);
+        persistProfileToList(userToLogin);
+        onLogin(userToLogin);
       } else {
-        // Auto-create or login with this code
-        userToLogin = {
-          id: `teacher_${cleanCode}`,
-          accessCode: cleanCode,
-          name: `Cikgu ${cleanCode}`,
-          schoolName: 'SMK JENERI',
-          avatarUrl: getTeacherAvatarSvg(cleanCode, `Cikgu ${cleanCode}`),
-          createdAt: new Date().toISOString(),
-        };
+        setLoginError(
+          `Tidak dapat menyambung ke pelayan dan tiada akaun untuk kod "${cleanCode}" pada peranti ini. Sila semak sambungan internet anda.`
+        );
       }
+    } finally {
+      setIsSubmitting(false);
     }
-
-    persistProfileToList(userToLogin);
-    onLogin(userToLogin);
   };
 
   // Handle Quick Select from saved list
-  const handleQuickSelect = (profile: TeacherUser) => {
+  const handleQuickSelect = async (profile: TeacherUser) => {
+    setIsSubmitting(true);
+    try {
+      // Semak dengan pelayan bagi mendapatkan profil terkini merentas peranti
+      const res = await fetch('/api/teacher/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessCode: profile.accessCode }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        persistProfileToList(data.user);
+        onLogin(data.user);
+        return;
+      }
+    } catch {
+      // Guna profil tempatan jika pelayan tidak responsif
+    } finally {
+      setIsSubmitting(false);
+    }
     persistProfileToList(profile);
     onLogin(profile);
   };
 
-  // Handle Register New Code
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  // Handle Register New Code (Enforces 1 unique code = 1 specific user)
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegisterError(null);
 
@@ -169,31 +222,65 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     const cleanSchool = newSchool.trim() || 'SMK JENERI';
 
     if (!cleanCode || cleanCode.length < 3) {
-      setRegisterError('Kod Akses mestilah sekurang-kurangnya 3 huruf/nombor.');
+      setRegisterError('Kod Akses mestilah sekurang-kurangnya 3 huruf atau nombor.');
       return;
     }
 
     if (!cleanName) {
-      setRegisterError('Sila masukkan nama guru (cth: Cikgu Hakim).');
+      setRegisterError('Sila masukkan nama guru (cth: Cikgu Ahmad Hakim).');
       return;
     }
 
     const preset = TEACHER_AVATAR_PRESETS.find((p) => p.id === selectedPresetId);
     const avatarUrl = getTeacherAvatarSvg(cleanCode, cleanName, preset?.iconText);
 
-    const newUser: TeacherUser = {
-      id: `teacher_${cleanCode}`,
-      accessCode: cleanCode,
-      name: cleanName,
-      schoolName: cleanSchool,
-      avatarUrl,
-      createdAt: new Date().toISOString(),
-    };
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/teacher/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessCode: cleanCode,
+          name: cleanName,
+          schoolName: cleanSchool,
+          avatarUrl,
+        }),
+      });
+      const data = await res.json();
 
-    // Save individual profile
-    localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(newUser));
-    persistProfileToList(newUser);
-    onLogin(newUser);
+      if (res.status === 409 || data.isExisting) {
+        setRegisterError(
+          data.error ||
+            `Kod akses "${cleanCode}" sudah didaftarkan untuk pengguna lain! Setiap kod adalah spesifik untuk seorang guru sahaja bagi mengelakkan data bertindih. Sila pilih kod unik lain, atau log masuk di tab 'Log Masuk Kod Sedia Ada' jika ini akaun anda.`
+        );
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        setRegisterError(data.error || 'Ralat semasa mendaftar kod akses. Sila cuba lagi.');
+        return;
+      }
+
+      const newUser: TeacherUser = data.user;
+      localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(newUser));
+      persistProfileToList(newUser);
+      onLogin(newUser);
+    } catch (err: any) {
+      // Fallback jika pelayan luar talian
+      const newUser: TeacherUser = {
+        id: `teacher_${cleanCode}`,
+        accessCode: cleanCode,
+        name: cleanName,
+        schoolName: cleanSchool,
+        avatarUrl,
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(newUser));
+      persistProfileToList(newUser);
+      onLogin(newUser);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -285,10 +372,20 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-indigo-950/60 transition flex items-center justify-center gap-2 active:scale-98"
+                disabled={isSubmitting}
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-indigo-950/60 transition flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <span>Masuk Akaun Guru</span>
-                <ArrowRight className="w-4 h-4" />
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Mengesahkan Kod Dengan Pelayan...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Masuk Akaun Guru</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
 
               {/* Saved accounts on this device */}
@@ -296,14 +393,16 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                 <div className="pt-2 border-t border-indigo-500/15">
                   <span className="block text-[11px] font-bold text-slate-400 mb-2 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                    Akaun Disimpan di Peranti Ini (Klik untuk Masuk Segera):
+                    Akaun Pernah Digunakan di Peranti Ini:
                   </span>
                   <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                     {savedProfiles.map((p) => (
                       <div
                         key={p.accessCode}
-                        onClick={() => handleQuickSelect(p)}
-                        className="group flex items-center justify-between p-2.5 bg-slate-950/80 hover:bg-indigo-950/50 border border-slate-800 hover:border-indigo-500/40 rounded-xl cursor-pointer transition"
+                        onClick={() => !isSubmitting && handleQuickSelect(p)}
+                        className={`group flex items-center justify-between p-2.5 bg-slate-950/80 hover:bg-indigo-950/50 border border-slate-800 hover:border-indigo-500/40 rounded-xl cursor-pointer transition ${
+                          isSubmitting ? 'opacity-50 pointer-events-none' : ''
+                        }`}
                       >
                         <div className="flex items-center gap-2.5">
                           <img
@@ -347,14 +446,19 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
               <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex items-start gap-2.5 text-[11px] text-slate-300">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-white block">Akses Selamat &amp; Pantas</span>
-                  Semua kelas, skema jawapan, dan rekod kertas OMR murid disimpan secara khusus di bawah Kod Akses anda. Masukkan kod yang sama bila-bila masa untuk membuka semula akaun anda.
+                  <span className="font-bold text-white block">Satu Kod Akses = Satu Akaun Guru Spesifik</span>
+                  Kod anda diselaraskan secara selamat ke pangkalan data. Jika anda log masuk di komputer, telefon, atau tablet lain menggunakan kod yang sama, semua maklumat profil, kelas, dan keputusan semakan OMR anda akan dibuka secara automatik.
                 </div>
               </div>
             </form>
           ) : (
             /* TAB 2: REGISTER NEW CODE */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+              <div className="p-2.5 bg-blue-950/40 border border-blue-500/30 rounded-xl text-[11px] text-blue-200">
+                <span className="font-bold text-white block mb-0.5">📌 Pendaftaran Kod Unik Peribadi</span>
+                Setiap kod adalah khusus untuk seorang guru sahaja. Kod ini tidak boleh digunakan oleh pengguna lain bagi melindungi rekod peperiksaan anda.
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
                   1. Cipta Kod Akses Guru (Pilihan Anda Sendiri): *
@@ -370,7 +474,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                   autoFocus
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Kod ini akan digunakan setiap kali anda ingin log masuk ke akaun anda.
+                  Kod ini akan menjadi kunci pengenalan unik akaun anda di mana-mana peranti.
                 </span>
               </div>
 
@@ -441,10 +545,20 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-teal-950/60 transition flex items-center justify-center gap-2 active:scale-98"
+                disabled={isSubmitting}
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-teal-950/60 transition flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Check className="w-4 h-4" />
-                <span>Cipta Kod & Masuk Akaun Sekarang</span>
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Mendaftarkan Kod di Sistem...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Cipta Kod & Masuk Akaun Sekarang</span>
+                  </>
+                )}
               </button>
             </form>
           )}

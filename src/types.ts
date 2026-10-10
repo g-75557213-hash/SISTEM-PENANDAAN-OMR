@@ -16,9 +16,10 @@ export interface QuestionBoundingBox {
   xmin: number;
   ymax: number;
   xmax: number;
-  // Specific option coordinates if detected
+  // Specific option coordinates if detected in pixel space
   markedBubble?: { x: number; y: number };
   correctBubble?: { x: number; y: number };
+  rowTimingMark?: { x: number; y: number; found: boolean };
 }
 
 export interface QuestionAnalysis {
@@ -28,6 +29,7 @@ export interface QuestionAnalysis {
   status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' | 'TIDAK_JELAS';
   annotation: QuestionAnnotation;
   box?: QuestionBoundingBox;
+  bubbleCenters?: Record<string, { x: number; y: number }>;
 }
 
 export interface RingkasanKeputusan {

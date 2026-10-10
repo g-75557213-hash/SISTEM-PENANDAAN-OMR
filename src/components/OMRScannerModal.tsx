@@ -453,6 +453,29 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                     </span>
                   </div>
 
+                  {/* Visual Guide: Student Name Zone (Ruang Nama) */}
+                  <div
+                    className="absolute border border-dashed border-cyan-400/40 rounded-lg bg-cyan-950/20 flex items-center justify-center pointer-events-none px-2"
+                    style={{ top: '8.2%', left: '16%', right: '16%', height: '8.5%' }}
+                  >
+                    <span className="text-[8px] sm:text-[9px] font-mono text-cyan-300 font-bold bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-500/30">
+                      RUANG NAMA MURID (BUKAN SOALAN)
+                    </span>
+                  </div>
+
+                  {/* Visual Guide: Start of Answers / Question 1 (Kotak Hitam Nombor Jawapan) */}
+                  <div
+                    className="absolute border-t-2 border-dashed border-emerald-400/70 flex items-center justify-between pointer-events-none px-3"
+                    style={{ top: '19.0%', left: '8%', right: '8%' }}
+                  >
+                    <span className="text-[7px] sm:text-[8px] font-mono font-bold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-500/60 -mt-2.5 shadow">
+                      ■ KOTAK HITAM SOALAN 1 (PERMULAAN JAWAPAN)
+                    </span>
+                    <span className="text-[7px] sm:text-[8px] font-mono font-bold text-purple-300 bg-slate-950/80 px-1.5 py-0.5 rounded -mt-2.5">
+                      LAJUR A B C D E
+                    </span>
+                  </div>
+
                   {/* 1. TOP-LEFT MARKER (Exact coordinate: 8.27% from top, 3.23% from left) */}
                   <div
                     className="absolute flex flex-col items-start gap-1"

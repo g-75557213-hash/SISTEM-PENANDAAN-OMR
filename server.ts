@@ -304,6 +304,238 @@ app.get('/api/gemini-keys-status', (req, res) => {
   });
 });
 
+// ==========================================
+// PENGURUSAN AKAUN GURU (1 KOD = 1 USER SPESIFIK & SINKRONISASI MERENTAS PERANTI)
+// ==========================================
+interface StoredTeacher {
+  id: string;
+  accessCode: string;
+  name: string;
+  schoolName: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+const TEACHERS_FILE = path.join(__dirname, 'teachers-db.json');
+const TEACHER_DATA_FILE = path.join(__dirname, 'teacher-data-db.json');
+
+function loadTeachers(): StoredTeacher[] {
+  try {
+    if (fs.existsSync(TEACHERS_FILE)) {
+      const data = fs.readFileSync(TEACHERS_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Gagal membaca teachers-db.json:', e);
+  }
+  return [];
+}
+
+let memoryTeachers: StoredTeacher[] = loadTeachers();
+
+function saveTeachers() {
+  try {
+    fs.writeFileSync(TEACHERS_FILE, JSON.stringify(memoryTeachers, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Gagal menyimpan teachers-db.json:', e);
+  }
+}
+
+function loadTeacherFoldersMap(): Record<string, any[]> {
+  try {
+    if (fs.existsSync(TEACHER_DATA_FILE)) {
+      const data = fs.readFileSync(TEACHER_DATA_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Gagal membaca teacher-data-db.json:', e);
+  }
+  return {};
+}
+
+let memoryTeacherFolders: Record<string, any[]> = loadTeacherFoldersMap();
+
+function saveTeacherFoldersMap() {
+  try {
+    fs.writeFileSync(TEACHER_DATA_FILE, JSON.stringify(memoryTeacherFolders, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Gagal menyimpan teacher-data-db.json:', e);
+  }
+}
+
+// 1. Semak kewujudan kod akses guru
+app.get('/api/teacher/check/:code', (req, res) => {
+  const code = (req.params.code || '').trim().toUpperCase();
+  const found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === code);
+  if (found) {
+    res.json({ exists: true, teacher: found });
+  } else {
+    res.json({ exists: false });
+  }
+});
+
+// 2. Daftar kod akses baharu (Kod unik spesifik untuk satu guru sahaja)
+app.post('/api/teacher/register', (req, res) => {
+  try {
+    const { accessCode, name, schoolName, avatarUrl } = req.body;
+    const cleanCode = (accessCode || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    const cleanName = (name || '').trim();
+    const cleanSchool = (schoolName || 'SMK JENERI').trim();
+
+    if (!cleanCode || cleanCode.length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Kod Akses mestilah sekurang-kurangnya 3 huruf atau nombor (cth: CIKGU123, 7555, SAINS-SMKJ).',
+      });
+    }
+
+    if (!cleanName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Sila masukkan nama guru (cth: Cikgu Ahmad).',
+      });
+    }
+
+    // Pastikan kod belum didaftarkan untuk pengguna lain
+    const existing = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        isExisting: true,
+        error: `Kod akses "${cleanCode}" sudah didaftarkan untuk "${existing.name}". Setiap kod akses adalah spesifik untuk satu pengguna sahaja. Sila cipta kod lain atau gunakan menu Log Masuk jika anda pemilik kod ini.`,
+      });
+    }
+
+    const newTeacher: StoredTeacher = {
+      id: `teacher_${cleanCode}`,
+      accessCode: cleanCode,
+      name: cleanName,
+      schoolName: cleanSchool,
+      avatarUrl: avatarUrl || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    memoryTeachers.push(newTeacher);
+    saveTeachers();
+
+    console.log(`[Guru Berdaftar] Guru baharu didaftarkan: ${cleanName} (Kod: ${cleanCode})`);
+    res.json({
+      success: true,
+      user: newTeacher,
+      message: 'Akaun guru berjaya didaftarkan di pangkalan data.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Ralat pendaftaran guru', details: err?.message });
+  }
+});
+
+// 3. Log masuk menggunakan kod akses guru sedia ada (Akses akaun sama merentas mana-mana peranti)
+app.post('/api/teacher/login', (req, res) => {
+  try {
+    const { accessCode } = req.body;
+    const cleanCode = (accessCode || '').trim().toUpperCase();
+
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, error: 'Sila masukkan Kod Akses Guru anda.' });
+    }
+
+    const found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+
+    if (found) {
+      return res.json({
+        success: true,
+        user: found,
+        message: `Selamat kembali, ${found.name}! Akaun anda berjaya diakses.`,
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      notFound: true,
+      error: `Kod akses "${cleanCode}" tidak dijumpai dalam pangkalan data sistem. Kod ini belum pernah didaftarkan di mana-mana peranti. Sila semak semula ejaan kod anda atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Ralat log masuk', details: err?.message });
+  }
+});
+
+// 4. Kemas kini profil guru (Nama, Sekolah, Avatar) diselaraskan ke semua peranti
+app.put('/api/teacher/profile', (req, res) => {
+  try {
+    const { accessCode, name, schoolName, avatarUrl } = req.body;
+    const cleanCode = (accessCode || '').trim().toUpperCase();
+
+    const target = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+
+    if (target) {
+      if (name) target.name = name.trim();
+      if (schoolName) target.schoolName = schoolName.trim();
+      if (avatarUrl !== undefined) target.avatarUrl = avatarUrl;
+      target.updatedAt = new Date().toISOString();
+      saveTeachers();
+
+      return res.json({
+        success: true,
+        user: target,
+        message: 'Profil guru berjaya dikemas kini.',
+      });
+    }
+
+    // Jika guru belum berada dalam database (cth: akaun dari versi lampau), simpan sekarang
+    const newTeacher: StoredTeacher = {
+      id: `teacher_${cleanCode}`,
+      accessCode: cleanCode,
+      name: (name || `Cikgu ${cleanCode}`).trim(),
+      schoolName: (schoolName || 'SMK JENERI').trim(),
+      avatarUrl: avatarUrl || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryTeachers.push(newTeacher);
+    saveTeachers();
+
+    res.json({
+      success: true,
+      user: newTeacher,
+      message: 'Profil guru berjaya disimpan ke pangkalan data.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Ralat kemas kini profil', details: err?.message });
+  }
+});
+
+// 5. Muat turun senarai folder kelas & rekod semakan pelajar untuk kod akses ini
+app.get('/api/teacher/folders/:code', (req, res) => {
+  const code = (req.params.code || '').trim().toUpperCase();
+  const folders = memoryTeacherFolders[code] || [];
+  res.json({ success: true, folders });
+});
+
+// 6. Simpan / selaraskan folder kelas & rekod semakan pelajar ke pelayan pusat
+app.post('/api/teacher/folders/:code', (req, res) => {
+  try {
+    const code = (req.params.code || '').trim().toUpperCase();
+    const { folders } = req.body;
+
+    if (!Array.isArray(folders)) {
+      return res.status(400).json({ success: false, error: 'Format data folder tidak sah.' });
+    }
+
+    memoryTeacherFolders[code] = folders;
+    saveTeacherFoldersMap();
+
+    res.json({
+      success: true,
+      count: folders.length,
+      message: 'Data kelas dan kertas jawapan berjaya diselaraskan ke pelayan pusat.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Ralat menyimpan data kelas', details: err?.message });
+  }
+});
+
 // API Endpoint for AI Student Name Recognition ONLY (OCR Nama Murid)
 // AI strictly used only for student name extraction, zero hallucination on answers
 app.post('/api/ocr-student-name', async (req, res) => {
@@ -418,12 +650,15 @@ app.post('/api/grade-omr', async (req, res) => {
 Anda adalah Enjin AI Penanda Kertas OMR Pintar (Automated OMR Optical Mark Recognition & Visual Marking Engine).
 Tugas anda adalah:
 1. MENGESAN NAMA PELAJAR SECARA TERUS (OCR NAMA):
-   - Imbas baris atau kotak bertulis "NAMA" / "NAME" di bahagian atas borang kertas jawapan.
+   - Imbas baris atau kotak bertulis "NAMA" / "NAME" di bahagian atas borang kertas jawapan (di dalam kotak maklumat pelajar).
    - Baca dan transkrip nama pelajar yang tertulis atau dicetak di situ (contoh: "AHMAD DANIAL BIN RAZAK", "NURUL IZZAH", dll).
    - Simpan nama penuh murid dalam "nama_pelajar". Jika ruangan nama benar-benar kosong, letakkan "Murid Tanpa Nama".
 
 2. PENGECAMAN LOREKAN BULATAN OMR (1 hingga ${totalQuestions}):
-   - Gunakan Kotak Hitam Jalur Y (Row Timing Marks) di sebelah nombor soalan dan Kotak Hitam Jalur X (Column Timing Marks) di atas huruf A-E untuk mengunci kedudukan baris & lajur dengan tepat.
+   - AMARAN PENTING & KRITIKAL:
+     * Bahagian "NAMA", "KELAS", "SUBJEK" di atas BUKANLAH soalan 1! JANGAN SEKALI-KALI menganggap kotak nama sebagai permulaan jawapan!
+     * Soalan 1 BERMULA HANYA pada baris nombor "1" di bawah huruf lajur A, B, C, D, E.
+     * Gunakan KOTAK HITAM JALUR Y (Row Timing Marks) di sebelah setiap nombor soalan (1, 2, 3...) dan KOTAK HITAM JALUR X di atas pilihan A-E untuk mengunci kedudukan baris & lajur dengan tepat.
    - Kenal pasti pilihan murid (A, B, C, D atau E).
    - Jika kosong: jawapan_pelajar: "TIADA_JAWAPAN".
    - Jika tanda tidak jelas / lebih dari 1: jawapan_pelajar: "AMBIGU/DOUBLE_MARK".
