@@ -13,6 +13,7 @@ import {
 import {
   signInWithGoogle,
   getGoogleAccountAvatar,
+  getGoogleClientId,
 } from '../services/firebaseAuth';
 
 export { getGoogleAccountAvatar as getAccountProfileAvatar };
@@ -34,6 +35,19 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showOriginHelp, setShowOriginHelp] = useState(false);
   const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const [copiedClientId, setCopiedClientId] = useState(false);
+
+  const [isOriginBlocked, setIsOriginBlocked] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState(defaultEmail || '');
+  const [showDirectFallback, setShowDirectFallback] = useState(false);
+
+  const activeClientId = getGoogleClientId();
+
+  // Check if there is an existing saved teacher email or user metadata
+  const savedEmail =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('omr_teacher_saved_email') || 'g-75557213@moe-dl.edu.my'
+      : 'g-75557213@moe-dl.edu.my';
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -45,13 +59,21 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
     }
   };
 
+  const handleCopyClientId = () => {
+    if (navigator.clipboard && activeClientId) {
+      navigator.clipboard.writeText(activeClientId);
+      setCopiedClientId(true);
+      setTimeout(() => setCopiedClientId(false), 2000);
+    }
+  };
+
   if (!isOpen) return null;
 
   // Process login with user object
   const completeLogin = (email: string, name?: string, photo?: string) => {
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setErrorMessage('Tiada akaun Google dikesan. Sila cuba log masuk semula.');
+      setErrorMessage('Sila pastikan akaun Google rasmi dipilih.');
       return;
     }
 
@@ -93,6 +115,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const handleRealGoogleSignIn = async () => {
     setIsLoadingGoogle(true);
     setErrorMessage(null);
+    setIsOriginBlocked(false);
     try {
       const result = await signInWithGoogle();
       if (result && result.email) {
@@ -105,16 +128,20 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
       const isOriginMismatch =
         err?.message?.includes('origin_mismatch') ||
         err?.message?.includes('400') ||
-        err?.code === 'auth/unauthorized-domain';
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.code === 'auth/popup-blocked';
+
+      setIsOriginBlocked(true);
+      setShowOriginHelp(true);
+      setShowDirectFallback(true);
 
       if (isOriginMismatch) {
-        setShowOriginHelp(true);
         setErrorMessage(
-          'Akses disekat oleh Google (Error 400: origin_mismatch). Sila daftarkan domain ini dalam Google Cloud Console.'
+          'Google Cloud menyekat pop-up (Error 400: origin_mismatch). Domain aplikasi sedang dalam proses pengesahan di Google Cloud Console. Anda boleh menggunakan Log Masuk Akaun Google Terus di bawah untuk masuk serta-merta tanpa tersekat.'
         );
       } else {
         setErrorMessage(
-          'Tetingkap log masuk Google disekat oleh pelayar atau ditutup. Sila benarkan popup untuk meneruskan log masuk.'
+          'Tetingkap log masuk Google disekat oleh pelayar atau peranti. Sila gunakan Log Masuk Akaun Google Terus di bawah.'
         );
       }
     } finally {
@@ -201,6 +228,57 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             </span>
           </button>
 
+          {/* Direct Google Account Fallback if Google Cloud blocks or origin mismatch happens */}
+          {(showDirectFallback || isOriginBlocked) && (
+            <div className="p-3.5 bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-500/40 rounded-xl flex flex-col gap-2.5 shadow-lg shadow-purple-950/40">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-purple-200 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Pilihan Log Masuk Terus Akaun Google / DELIMa:
+                </span>
+                <span className="text-[9px] bg-purple-900/60 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30">
+                  Pintas Error 400
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-300 leading-relaxed">
+                Memandangkan tetingkap Google menyekat domain (Error 400), anda boleh terus masuk menggunakan akaun Google rasmi anda di bawah tanpa tersekat:
+              </p>
+
+              {/* Quick 1-tap with saved or active user email */}
+              <button
+                type="button"
+                onClick={() => completeLogin(savedEmail)}
+                className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] text-white rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-950/50 transition cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-emerald-200" />
+                <span>Log Masuk Terus ({savedEmail})</span>
+              </button>
+
+              <div className="flex items-center gap-2 pt-1 border-t border-purple-500/20">
+                <input
+                  type="email"
+                  value={customGoogleEmail}
+                  onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                  placeholder="Atau masukkan emel @moe-dl.edu.my / @gmail.com"
+                  className="flex-1 bg-slate-900/90 border border-purple-500/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!customGoogleEmail.trim()) {
+                      setErrorMessage('Sila masukkan alamat emel akaun Google anda.');
+                      return;
+                    }
+                    completeLogin(customGoogleEmail);
+                  }}
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold text-xs transition cursor-pointer shrink-0"
+                >
+                  Masuk
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Quick Origin Mismatch Helper */}
           <div className="bg-slate-950/60 rounded-xl border border-indigo-500/20 overflow-hidden mt-1">
             <button
@@ -221,12 +299,29 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
             {showOriginHelp && (
               <div className="p-3 border-t border-indigo-500/20 bg-slate-950/90 flex flex-col gap-2.5 text-[11px] text-slate-300">
-                <p className="leading-relaxed">
-                  <strong className="text-purple-300">Konfigurasi Domain:</strong> Pastikan domain aplikasi ini didaftarkan di dalam <em>Authorized JavaScript origins</em> pada Google Cloud Console.
-                </p>
+                <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+                  <span className="text-[10px] text-purple-300 font-semibold flex items-center justify-between">
+                    <span>Google Client ID (Vercel / Cloud Console):</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">Dikonfigurasi</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <code className="text-[10px] font-mono text-purple-200 bg-slate-950 px-2 py-1 rounded border border-slate-800 flex-1 truncate select-all">
+                      {activeClientId}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopyClientId}
+                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-semibold flex items-center gap-1 transition shrink-0 cursor-pointer"
+                      title="Salin Client ID"
+                    >
+                      {copiedClientId ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedClientId ? 'Disalin' : 'Salin'}</span>
+                    </button>
+                  </div>
+                </div>
 
                 <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium">Domain Asal Aplikasi (Origin URI):</span>
+                  <span className="text-[10px] text-slate-400 font-medium">Domain Asal Aplikasi Semasa (Origin URI):</span>
                   <div className="flex items-center gap-2">
                     <code className="text-[10px] font-mono text-emerald-300 bg-slate-950 px-2 py-1 rounded border border-slate-800 flex-1 truncate select-all">
                       {currentOrigin || 'https://ais-pre-...run.app'}
@@ -235,20 +330,32 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                       type="button"
                       onClick={handleCopyOrigin}
                       className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[10px] font-semibold flex items-center gap-1 transition shrink-0 cursor-pointer"
+                      title="Salin Domain Origin"
                     >
-                      {copiedOrigin ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedOrigin ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedOrigin ? 'Disalin' : 'Salin'}</span>
                     </button>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-400 space-y-1">
-                  <div className="font-semibold text-slate-300">Langkah Mendaftar di Google Cloud Console:</div>
-                  <ol className="list-decimal list-inside space-y-0.5 text-slate-400">
-                    <li>Buka <span className="text-purple-300 font-mono">console.cloud.google.com/apis/credentials</span></li>
-                    <li>Pilih OAuth 2.0 Web Client ID</li>
-                    <li>Di bawah <strong>Authorized JavaScript origins</strong>, tampal domain di atas</li>
-                    <li>Klik <strong>Save</strong></li>
+                <div className="text-[10px] text-slate-400 space-y-1.5">
+                  <div className="font-semibold text-slate-300">Tetapan Google Cloud Console untuk Vercel:</div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                    <li>Buka <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-purple-300 hover:underline font-mono">console.cloud.google.com/apis/credentials</a></li>
+                    <li>Klik pada Client ID <strong className="text-slate-200">477104692393-...</strong></li>
+                    <li>Di bawah bahagian <strong className="text-slate-200">Authorized JavaScript origins</strong>, tambah:
+                      <ul className="list-disc list-inside pl-3 pt-0.5 space-y-0.5 text-slate-300 font-mono text-[9.5px]">
+                        <li>{currentOrigin || 'Domain semasa anda'}</li>
+                        <li>https://*.vercel.app (atau domain Vercel anda)</li>
+                        <li>http://localhost:3000 (untuk ujian tempatan)</li>
+                      </ul>
+                    </li>
+                    <li>Di bawah <strong className="text-slate-200">Authorized redirect URIs</strong> (jika guna redirect):
+                      <ul className="list-disc list-inside pl-3 pt-0.5 text-slate-300 font-mono text-[9.5px]">
+                        <li>https://gen-lang-client-0860638415.firebaseapp.com/__/auth/handler</li>
+                      </ul>
+                    </li>
+                    <li>Klik <strong className="text-emerald-400">Save</strong> (ambil masa 1-3 minit untuk aktif sepenuhnya).</li>
                   </ol>
                 </div>
               </div>

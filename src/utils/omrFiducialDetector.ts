@@ -31,9 +31,9 @@ export interface SixCornerMarkers {
 
 export interface QuestionDetectedAnswer {
   nombor_soalan: number;
-  jawapan_pelajar: string; // 'A' | 'B' | 'C' | 'D' | 'E' | 'TIADA_JAWAPAN' | 'AMBIGU/DOUBLE_MARK'
+  jawapan_pelajar: string; // 'A' | 'B' | 'C' | 'D' | 'E' | 'TIADA_JAWAPAN' | 'AMBIGU/DOUBLE_MARK' | 'TIDAK_JELAS'
   jawapan_sebenar: string;
-  status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK';
+  status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' | 'TIDAK_JELAS';
   annotation: {
     simbol: '✔' | '✘' | '○' | '⚠';
     warna: 'GREEN' | 'RED' | 'YELLOW' | 'ORANGE';
@@ -526,11 +526,11 @@ export function processOMRGridAnswers(
     const correctAns = (rawKey || 'A').toString().trim().toUpperCase();
 
     let studentAns = 'TIADA_JAWAPAN';
-    let status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' = 'KOSONG';
+    let status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' | 'TIDAK_JELAS' = 'KOSONG';
 
     const MARK_SCORE_THRESHOLD = 0.16;
-    const FAINT_MARK_THRESHOLD = 0.08;
-    const DOUBLE_MARK_RATIO = 0.82;
+    const FAINT_MARK_THRESHOLD = 0.07;
+    const DOUBLE_MARK_RATIO = 0.80;
 
     if (topOption[1] >= MARK_SCORE_THRESHOLD) {
       if (
@@ -539,20 +539,20 @@ export function processOMRGridAnswers(
         secondOption[1] >= topOption[1] * DOUBLE_MARK_RATIO
       ) {
         studentAns = 'AMBIGU/DOUBLE_MARK';
-        status = 'DOUBLE_MARK';
+        status = 'TIDAK_JELAS'; // Dikelaskan sebagai tidak jelas / dwi tanda -> kuning
       } else {
         studentAns = topOption[0];
         if (studentAns === correctAns) {
-          status = 'BETUL';
+          status = 'BETUL'; // Jawapan betul -> hijau
           correctCount++;
         } else {
-          status = 'SALAH';
+          status = 'SALAH'; // Jawapan salah -> merah
         }
       }
     } else if (topOption[1] >= FAINT_MARK_THRESHOLD) {
-      // Lorekan tidak jelas / samar / separuh padam
+      // Lorekan tidak jelas / samar / separuh padam / ragu-ragu -> kuning
       studentAns = `TIDAK_JELAS (${topOption[0]})`;
-      status = 'DOUBLE_MARK';
+      status = 'TIDAK_JELAS';
     } else {
       studentAns = 'TIADA_JAWAPAN';
       status = 'KOSONG';
@@ -565,20 +565,20 @@ export function processOMRGridAnswers(
 
     if (status === 'BETUL') {
       simbol = '✔';
-      warna = 'GREEN';
+      warna = 'GREEN'; // HIJAU
       teks_tambahan = '';
     } else if (status === 'SALAH') {
       simbol = '✘';
-      warna = 'RED';
+      warna = 'RED'; // MERAH
       teks_tambahan = `Jawapan Betul: ${correctAns}`;
     } else if (status === 'KOSONG') {
       simbol = '○';
-      warna = 'YELLOW';
+      warna = 'YELLOW'; // KUNING
       teks_tambahan = `Kosong (Betul: ${correctAns})`;
     } else {
-      // TIDAK JELAS / SAMAR / DWI-TANDA
+      // TIDAK JELAS / SAMAR / DWI-TANDA (TIDAK_JELAS / DOUBLE_MARK)
       simbol = '⚠';
-      warna = 'YELLOW';
+      warna = 'YELLOW'; // KUNING
       teks_tambahan = `Tidak Jelas (Betul: ${correctAns})`;
     }
 

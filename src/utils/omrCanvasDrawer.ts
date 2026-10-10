@@ -418,6 +418,16 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
         }
       }
     }
+
+    // KOTAK HITAM PENJALURAN X BAWAH (Bottom Column Timing Marks)
+    // Membantu pengecaman tepat jalur X pada bahagian bawah setiap lajur
+    const bottomTrackY = gridStartY + (endQ - startQ + 1) * rowHeight + 8;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(colX - 18, bottomTrackY, 16, 10);
+    for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
+      const bx = bubblesStartX + optIdx * bubbleSpacing + bubbleSpacing / 2;
+      ctx.fillRect(bx - 9, bottomTrackY, 18, 10);
+    }
   }
 
   // 5. Ruang Kosong Bawah Bahagian Tanda Jawapan Pelajar:

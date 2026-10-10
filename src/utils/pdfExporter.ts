@@ -91,14 +91,21 @@ export function generateMarksOnlyCanvas(
       ctx.textAlign = 'left';
       ctx.fillText('✔ Betul', sideSpaceStartX + 8, centerY);
       ctx.restore();
-    } else if (item.status === 'KOSONG' || item.status === 'DOUBLE_MARK' || !studentOpt || studentOpt === 'TIADA_JAWAPAN') {
+    } else if (
+      item.status === 'KOSONG' ||
+      item.status === 'DOUBLE_MARK' ||
+      item.status === 'TIDAK_JELAS' ||
+      !studentOpt ||
+      studentOpt === 'TIADA_JAWAPAN' ||
+      studentOpt.includes('TIDAK_JELAS')
+    ) {
       // JAWAPAN TIDAK JELAS / KOSONG / SAMAR: TANDA KUNING (Yellow / Amber)
       ctx.save();
       ctx.fillStyle = '#eab308';
       ctx.font = `bold ${Math.max(16, Math.round(rowHeight * 0.85))}px "Plus Jakarta Sans", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(item.status === 'DOUBLE_MARK' ? '⚠' : '○', markX, centerY);
+      ctx.fillText(item.status === 'KOSONG' ? '○' : '⚠', markX, centerY);
 
       // Kad kuning di ruangan sisi
       const badgeH = Math.min(28, rowHeight - 6);
@@ -115,7 +122,10 @@ export function generateMarksOnlyCanvas(
       ctx.fillStyle = '#854d0e';
       ctx.font = `bold ${Math.min(13, Math.round(rowHeight * 0.36))}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'left';
-      const labelText = item.status === 'DOUBLE_MARK' ? `⚠ Dwi (${correctOpt})` : `○ Kosong (${correctOpt})`;
+      const labelText =
+        item.status === 'KOSONG'
+          ? `○ Kosong (${correctOpt})`
+          : `⚠ Tidak Jelas (${correctOpt})`;
       ctx.fillText(labelText, sideSpaceStartX + 8, centerY);
       ctx.restore();
     } else {

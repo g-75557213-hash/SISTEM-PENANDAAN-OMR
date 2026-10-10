@@ -65,6 +65,14 @@ export const getGoogleAccountAvatar = (email: string, name?: string): string => 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+export const getGoogleClientId = (): string => {
+  return (
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID) ||
+    (firebaseConfig as any).oAuthClientId ||
+    '477104692393-0ajjtk3vj6f46e7q66lho5v3kdsq5ook.apps.googleusercontent.com'
+  );
+};
+
 /**
  * Attempt Google Sign-In via Google Identity Services (GIS) OAuth
  */
@@ -76,9 +84,7 @@ const signInWithGoogleIdentityServices = (): Promise<GoogleAuthResult | null> =>
     }
 
     try {
-      const clientId =
-        (firebaseConfig as any).oAuthClientId ||
-        '50995058574-hu8ahk7931v88amodgue22cn75rg7qk5.apps.googleusercontent.com';
+      const clientId = getGoogleClientId();
 
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,

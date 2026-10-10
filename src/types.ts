@@ -23,9 +23,9 @@ export interface QuestionBoundingBox {
 
 export interface QuestionAnalysis {
   nombor_soalan: number;
-  jawapan_pelajar: string; // 'A' | 'B' | 'C' | 'D' | 'E' | 'TIADA_JAWAPAN' | 'AMBIGU/DOUBLE_MARK'
+  jawapan_pelajar: string; // 'A' | 'B' | 'C' | 'D' | 'E' | 'TIADA_JAWAPAN' | 'AMBIGU/DOUBLE_MARK' | 'TIDAK_JELAS'
   jawapan_sebenar: 'A' | 'B' | 'C' | 'D' | 'E';
-  status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK';
+  status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' | 'TIDAK_JELAS';
   annotation: QuestionAnnotation;
   box?: QuestionBoundingBox;
 }

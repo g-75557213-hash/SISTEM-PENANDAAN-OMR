@@ -29,7 +29,7 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
   result,
 }) => {
   const [activeTab, setActiveTab] = useState<'visual' | 'table' | 'json' | 'analysis'>('visual');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' | 'TIDAK_JELAS'>('ALL');
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
 
@@ -38,6 +38,9 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
   // Filtered detail list
   const filteredQuestions = analisis_detail.filter((item) => {
     if (filterStatus === 'ALL') return true;
+    if (filterStatus === 'TIDAK_JELAS') {
+      return item.status === 'TIDAK_JELAS' || item.status === 'DOUBLE_MARK';
+    }
     return item.status === filterStatus;
   });
 
@@ -45,7 +48,9 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
   const countBetul = ringkasan_keputusan.jawapan_betul;
   const countSalah = analisis_detail.filter((i) => i.status === 'SALAH').length;
   const countKosong = analisis_detail.filter((i) => i.status === 'KOSONG').length;
-  const countDouble = analisis_detail.filter((i) => i.status === 'DOUBLE_MARK').length;
+  const countTidakJelas = analisis_detail.filter(
+    (i) => i.status === 'TIDAK_JELAS' || i.status === 'DOUBLE_MARK'
+  ).length;
 
   const isLulus = cetakan_header_markah.status_kelulusan === 'LULUS' || cetakan_header_markah.status_kelulusan === 'CEMERLANG';
 
@@ -191,13 +196,13 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
               </div>
             )}
 
-            {countDouble > 0 && (
-              <div className="bg-slate-950/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-indigo-500/20 text-center">
-                <span className="block text-[10px] font-semibold text-orange-400 uppercase flex items-center justify-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> Dwi-Tanda
+            {countTidakJelas > 0 && (
+              <div className="bg-slate-950/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-yellow-500/30 text-center">
+                <span className="block text-[10px] font-semibold text-yellow-400 uppercase flex items-center justify-center gap-1">
+                  <AlertTriangle className="w-3 h-3 text-yellow-400" /> Tidak Jelas
                 </span>
-                <span className="text-base sm:text-lg font-bold font-mono text-orange-300">
-                  {countDouble}
+                <span className="text-base sm:text-lg font-bold font-mono text-yellow-300">
+                  {countTidakJelas}
                 </span>
               </div>
             )}
@@ -402,6 +407,18 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
               >
                 Salah ({countSalah})
               </button>
+              {countTidakJelas > 0 && (
+                <button
+                  onClick={() => setFilterStatus('TIDAK_JELAS')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                    filterStatus === 'TIDAK_JELAS'
+                      ? 'bg-yellow-600 text-white'
+                      : 'bg-slate-800 text-yellow-400 hover:bg-slate-700'
+                  }`}
+                >
+                  Tidak Jelas ({countTidakJelas})
+                </button>
+              )}
               {countKosong > 0 && (
                 <button
                   onClick={() => setFilterStatus('KOSONG')}

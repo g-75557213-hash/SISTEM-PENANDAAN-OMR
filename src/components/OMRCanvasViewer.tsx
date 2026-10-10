@@ -118,7 +118,34 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           markTargetX = optionsStartX + optToIndex[studentOpt] * optionsGap + optionsGap * 0.5;
         }
 
-        // 2a. Draw Checkmark (✔) or Cross (✘)
+        // 2. Color-coded Bubble Ring around student's answer (Hijau = Betul, Merah = Salah, Kuning = Tidak Jelas)
+        ctx.save();
+        const highlightRadius = Math.max(10, Math.round(boxH * 0.38));
+        ctx.beginPath();
+        ctx.arc(markTargetX, centerY, highlightRadius, 0, Math.PI * 2);
+        if (item.status === 'BETUL') {
+          ctx.strokeStyle = '#16a34a'; // Hijau
+          ctx.lineWidth = 2.5;
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.12)';
+          ctx.fill();
+          ctx.stroke();
+        } else if (item.status === 'SALAH') {
+          ctx.strokeStyle = '#dc2626'; // Merah
+          ctx.lineWidth = 2.5;
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // TIDAK JELAS / KOSONG / SAMAR
+          ctx.strokeStyle = '#eab308'; // Kuning
+          ctx.lineWidth = 2.5;
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.15)';
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // 2a. Draw Checkmark (✔), Cross (✘), or Warning (⚠)
         if (showCheckmarks) {
           ctx.save();
           if (item.status === 'BETUL') {
