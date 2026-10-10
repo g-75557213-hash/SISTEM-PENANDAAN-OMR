@@ -78,7 +78,7 @@ export function generateMarksOnlyCanvas(
     const markX = optIdx >= 0 ? bubblesStartX + optIdx * bubbleSpacing + bubbleSpacing / 2 : bubblesStartX + bubbleSpacing;
 
     if (item.status === 'BETUL') {
-      // Crisp Green Checkmark over bubble
+      // JAWAPAN BETUL: TANDA HIJAU (Green)
       ctx.save();
       ctx.fillStyle = '#16a34a';
       ctx.font = `bold ${Math.max(18, Math.round(rowHeight * 0.95))}px "Plus Jakarta Sans", sans-serif`;
@@ -86,20 +86,47 @@ export function generateMarksOnlyCanvas(
       ctx.textBaseline = 'middle';
       ctx.fillText('✔', markX, centerY);
 
-      // Also small green tick in side column
+      // Juga tanda semak hijau di ruang sisi
       ctx.font = `bold ${Math.round(rowHeight * 0.44)}px "Plus Jakarta Sans", sans-serif`;
       ctx.textAlign = 'left';
       ctx.fillText('✔ Betul', sideSpaceStartX + 8, centerY);
       ctx.restore();
+    } else if (item.status === 'KOSONG' || item.status === 'DOUBLE_MARK' || !studentOpt || studentOpt === 'TIADA_JAWAPAN') {
+      // JAWAPAN TIDAK JELAS / KOSONG / SAMAR: TANDA KUNING (Yellow / Amber)
+      ctx.save();
+      ctx.fillStyle = '#eab308';
+      ctx.font = `bold ${Math.max(16, Math.round(rowHeight * 0.85))}px "Plus Jakarta Sans", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.status === 'DOUBLE_MARK' ? '⚠' : '○', markX, centerY);
+
+      // Kad kuning di ruangan sisi
+      const badgeH = Math.min(28, rowHeight - 6);
+      const badgeY = centerY - badgeH / 2;
+
+      ctx.fillStyle = '#fef9c3';
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(sideSpaceStartX + 4, badgeY, Math.max(90, sideSpaceWidth - 8), badgeH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#854d0e';
+      ctx.font = `bold ${Math.min(13, Math.round(rowHeight * 0.36))}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'left';
+      const labelText = item.status === 'DOUBLE_MARK' ? `⚠ Dwi (${correctOpt})` : `○ Kosong (${correctOpt})`;
+      ctx.fillText(labelText, sideSpaceStartX + 8, centerY);
+      ctx.restore();
     } else {
-      // Track for error summary
+      // JAWAPAN SALAH: TANDA MERAH (Red)
       wrongQuestionsList.push({
         q: qNum,
         student: studentOpt,
         correct: correctOpt,
       });
 
-      // Bold Red Cross over student's wrong bubble
+      // Tanda pangkah merah atas pilihan salah murid
       ctx.save();
       ctx.fillStyle = '#dc2626';
       ctx.font = `bold ${Math.max(18, Math.round(rowHeight * 0.95))}px "Plus Jakarta Sans", sans-serif`;
@@ -107,7 +134,7 @@ export function generateMarksOnlyCanvas(
       ctx.textBaseline = 'middle';
       ctx.fillText('✘', markX, centerY);
 
-      // Ruang di sebelah: Jawapan Betul Callout badge
+      // Kad merah di ruang sisi
       const badgeH = Math.min(28, rowHeight - 6);
       const badgeY = centerY - badgeH / 2;
 
@@ -122,7 +149,7 @@ export function generateMarksOnlyCanvas(
       ctx.fillStyle = '#b91c1c';
       ctx.font = `bold ${Math.min(14, Math.round(rowHeight * 0.38))}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'left';
-      ctx.fillText(`✘ Betul: ${correctOpt}`, sideSpaceStartX + 12, centerY);
+      ctx.fillText(`✘ Betul: ${correctOpt}`, sideSpaceStartX + 10, centerY);
       ctx.restore();
     }
   });

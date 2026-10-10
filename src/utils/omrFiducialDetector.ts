@@ -421,13 +421,40 @@ export function processOMRGridAnswers(
     const mappedColStart = mapPoint(refColX, refRowY);
     const mappedColEnd = mapPoint(refColX + refColumnWidth, refRowY + refRowHeight);
 
-    // Row Center Fine-Tuning: Search +/- 4px for peak horizontal contrast
+    // 1. DETEKSI KOTAK HITAM JALUR Y (Optical Row Timing Track Mark)
+    // Mencari pusat kotak hitam penjajaran di tepi baris soalan (refColX - 24, refCenterY)
+    const expectedTimingPt = mapPoint(refColX - 16, refCenterY);
+    let timingSumY = 0;
+    let timingDarkPixels = 0;
+    const searchSpanY = Math.max(8, Math.round(refRowHeight * 0.42));
+    const searchSpanX = 14;
+
+    for (let dy = -searchSpanY; dy <= searchSpanY; dy++) {
+      for (let dx = -searchSpanX; dx <= searchSpanX; dx++) {
+        const tx = Math.round(expectedTimingPt.x + dx);
+        const ty = Math.round(expectedTimingPt.y + dy);
+        if (tx >= 0 && tx < width && ty >= 0 && ty < height) {
+          const idx = (ty * width + tx) * 4;
+          const brightness = (data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114) / 1000;
+          if (brightness < 125) {
+            timingSumY += ty;
+            timingDarkPixels++;
+          }
+        }
+      }
+    }
+
+    let timingY = mappedRowCenter.y;
+    if (timingDarkPixels >= 8) {
+      timingY = timingSumY / timingDarkPixels;
+    }
+
+    // Row Center Fine-Tuning: gabungkan pengesanan Kotak Hitam Jalur Y dengan analisis kontras
     let bestDy = 0;
     let maxContrast = -1;
     for (let dy = -4; dy <= 4; dy += 2) {
-      const checkY = Math.round(mappedRowCenter.y + dy);
+      const checkY = Math.round(timingY + dy);
       if (checkY >= 0 && checkY < height) {
-        // Measure variance across row span
         let rowSum = 0;
         let rowSqSum = 0;
         let rowSamples = 0;
@@ -452,7 +479,7 @@ export function processOMRGridAnswers(
       }
     }
 
-    const fineTunedCenterY = mappedRowCenter.y + bestDy;
+    const fineTunedCenterY = timingY + bestDy;
 
     // Local paper baseline measurement
     const baselinePoint = mapPoint(refColX + refQNumWidth + 4, refCenterY);
@@ -502,6 +529,7 @@ export function processOMRGridAnswers(
     let status: 'BETUL' | 'SALAH' | 'KOSONG' | 'DOUBLE_MARK' = 'KOSONG';
 
     const MARK_SCORE_THRESHOLD = 0.16;
+    const FAINT_MARK_THRESHOLD = 0.08;
     const DOUBLE_MARK_RATIO = 0.82;
 
     if (topOption[1] >= MARK_SCORE_THRESHOLD) {
@@ -521,12 +549,16 @@ export function processOMRGridAnswers(
           status = 'SALAH';
         }
       }
+    } else if (topOption[1] >= FAINT_MARK_THRESHOLD) {
+      // Lorekan tidak jelas / samar / separuh padam
+      studentAns = `TIDAK_JELAS (${topOption[0]})`;
+      status = 'DOUBLE_MARK';
     } else {
       studentAns = 'TIADA_JAWAPAN';
       status = 'KOSONG';
     }
 
-    // Annotation details
+    // Annotation details: HIJAU (BETUL), MERAH (SALAH), KUNING (TIDAK JELAS / KOSONG / SAMAR)
     let simbol: '✔' | '✘' | '○' | '⚠' = '✔';
     let warna: 'GREEN' | 'RED' | 'YELLOW' | 'ORANGE' = 'GREEN';
     let teks_tambahan = '';
@@ -544,9 +576,10 @@ export function processOMRGridAnswers(
       warna = 'YELLOW';
       teks_tambahan = `Kosong (Betul: ${correctAns})`;
     } else {
+      // TIDAK JELAS / SAMAR / DWI-TANDA
       simbol = '⚠';
-      warna = 'ORANGE';
-      teks_tambahan = `Dwi-Tanda (Betul: ${correctAns})`;
+      warna = 'YELLOW';
+      teks_tambahan = `Tidak Jelas (Betul: ${correctAns})`;
     }
 
     const boxXmin = Math.round((Math.min(mappedColStart.x, mappedColEnd.x) / width) * 1000);

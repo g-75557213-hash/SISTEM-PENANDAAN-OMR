@@ -347,9 +347,13 @@ export const OMRResultsView: React.FC<OMRResultsViewProps> = ({
                     <div className="text-right">
                       {q.status === 'BETUL' ? (
                         <span className="text-emerald-400 font-semibold text-[11px]">BETUL</span>
-                      ) : (
+                      ) : q.status === 'SALAH' ? (
                         <span className="text-rose-400 font-semibold text-[11px] font-mono">
                           {q.annotation.teks_tambahan || `Betul: ${q.jawapan_sebenar}`}
+                        </span>
+                      ) : (
+                        <span className="text-amber-400 font-semibold text-[11px] font-mono">
+                          {q.annotation.teks_tambahan || `Tidak Jelas (${q.jawapan_sebenar})`}
                         </span>
                       )}
                     </div>

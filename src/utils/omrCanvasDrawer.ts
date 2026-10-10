@@ -235,15 +235,26 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
     const sideSpaceStartX = bubblesStartX + bubblesAreaWidth + 10;
     const sideSpaceWidth = (colX + columnWidth) - sideSpaceStartX;
 
-    // Column Header Letters: A B C D E
+    // Column Header Letters: A B C D E with KOTAK HITAM PENJALURAN X (Column Optical Timing Marks)
     ctx.fillStyle = '#000000';
     ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     const headerY = gridStartY - 24;
+
+    // Kotak Hitam Jalur X di atas nombor soalan
+    ctx.fillRect(colX - 18, headerY - 24, 16, 10);
+
     for (let optIdx = 0; optIdx < optionsList.length; optIdx++) {
       const bx = bubblesStartX + optIdx * bubbleSpacing + bubbleSpacing / 2;
+      
+      // Kotak Hitam Penjajaran Jalur X (Column Timing Mark) di atas setiap pilihan A, B, C, D, E
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(bx - 9, headerY - 24, 18, 10);
+
+      // Huruf Pilihan A B C D E
+      ctx.fillStyle = '#000000';
       ctx.fillText(optionsList[optIdx], bx, headerY);
     }
 
@@ -269,6 +280,16 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
       const rowY = gridStartY + rowIdx * rowHeight;
       const centerY = rowY + rowHeight / 2;
 
+      // 1. KOTAK HITAM PENJALURAN Y (Row Optical Timing Track Mark)
+      // Diletakkan tepat sejajar dengan paksi Y setiap baris soalan
+      ctx.fillStyle = '#000000';
+      // Kotak Hitam Jalur Y di sebelah nombor soalan
+      ctx.fillRect(colX - 24, centerY - 6, 16, 12);
+
+      // Kotak Hitam Jalur Y di margin luar kertas untuk rujukan kamera
+      ctx.fillRect(markerMargin + 6, centerY - 5, 22, 10);
+      ctx.fillRect(width - markerMargin - 28, centerY - 5, 22, 10);
+
       // Question Number (Bold, high contrast as in template)
       ctx.fillStyle = '#000000';
       ctx.font = `bold ${Math.min(24, Math.round(rowHeight * 0.52))}px "Plus Jakarta Sans", sans-serif`;
@@ -280,14 +301,15 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
       const studentAns = filledAnswers[q];
       const correctAns = correctAnswers[q];
       const hasEvaluation = correctAns !== undefined;
-      const isCorrect = hasEvaluation && studentAns === correctAns;
-      const isWrong = hasEvaluation && !isCorrect;
+      const isUnclear = !studentAns || studentAns === 'TIADA_JAWAPAN' || studentAns === 'AMBIGU/DOUBLE_MARK' || studentAns === 'TIDAK_JELAS';
+      const isCorrect = hasEvaluation && !isUnclear && studentAns === correctAns;
+      const isWrong = hasEvaluation && !isUnclear && !isCorrect;
 
-      if (isWrong) {
+      if (isWrong || isUnclear) {
         wrongQuestionsList.push({
           q,
           student: studentAns || 'KOSONG',
-          correct: correctAns,
+          correct: correctAns || '-',
         });
       }
 
@@ -298,7 +320,7 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
         const bubbleCenterY = centerY;
 
         const isFilled = studentAns === opt;
-        const isDoubleMark = studentAns === 'AMBIGU/DOUBLE_MARK' && (opt === 'A' || opt === 'B');
+        const isDoubleMark = (studentAns === 'AMBIGU/DOUBLE_MARK' || studentAns === 'TIDAK_JELAS') && (opt === 'A' || opt === 'B');
 
         ctx.beginPath();
         ctx.arc(bubbleCenterX, bubbleCenterY, bubbleRadius, 0, Math.PI * 2);
@@ -328,24 +350,46 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
         }
       }
 
-      // RUANG DI SEBELAH BAGI MENUNJUKKAN SOALAN YANG SALAH (Side Correction Column)
+      // RUANG DI SEBELAH: PENANDAAN WARNA HIJAU (BETUL), MERAH (SALAH), KUNING (TIDAK JELAS)
       if (showCorrectionColumn) {
         if (hasEvaluation) {
           if (isCorrect) {
-            // Tanda Semak (✔) berwarna hijau
+            // JAWAPAN BETUL: TANDA HIJAU (Green)
             ctx.save();
             ctx.fillStyle = '#16a34a';
             ctx.font = `bold ${Math.round(rowHeight * 0.54)}px "Plus Jakarta Sans", sans-serif`;
             ctx.textAlign = 'left';
             ctx.fillText('✔ Betul', sideSpaceStartX + 8, centerY);
             ctx.restore();
-          } else {
-            // Tanda Pangkah (✘) dan jawapan betul di ruang sebelah
+          } else if (isUnclear) {
+            // JAWAPAN TIDAK JELAS / KOSONG / SAMAR: TANDA KUNING (Yellow / Amber)
             ctx.save();
             const badgeH = Math.min(28, rowHeight - 6);
             const badgeY = centerY - badgeH / 2;
 
-            // Highlight pill
+            // Yellow highlight pill
+            ctx.fillStyle = '#fef9c3';
+            ctx.strokeStyle = '#eab308';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(sideSpaceStartX + 4, badgeY, Math.max(90, sideSpaceWidth - 8), badgeH, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            // Amber text & warning symbol
+            ctx.fillStyle = '#854d0e';
+            ctx.font = `bold ${Math.min(13, Math.round(rowHeight * 0.36))}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'left';
+            const labelText = studentAns === 'AMBIGU/DOUBLE_MARK' ? `⚠ Dwi (${correctAns})` : `○ Kosong (${correctAns})`;
+            ctx.fillText(labelText, sideSpaceStartX + 8, centerY);
+            ctx.restore();
+          } else {
+            // JAWAPAN SALAH: TANDA MERAH (Red)
+            ctx.save();
+            const badgeH = Math.min(28, rowHeight - 6);
+            const badgeY = centerY - badgeH / 2;
+
+            // Red highlight pill
             ctx.fillStyle = '#fee2e2';
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 1;
@@ -354,11 +398,11 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
             ctx.fill();
             ctx.stroke();
 
-            // Red cross & correct answer text
+            // Bold Red cross & correct answer text
             ctx.fillStyle = '#b91c1c';
             ctx.font = `bold ${Math.min(14, Math.round(rowHeight * 0.38))}px "JetBrains Mono", monospace`;
             ctx.textAlign = 'left';
-            ctx.fillText(`✘ Betul: ${correctAns}`, sideSpaceStartX + 12, centerY);
+            ctx.fillText(`✘ Betul: ${correctAns}`, sideSpaceStartX + 10, centerY);
             ctx.restore();
           }
         } else {

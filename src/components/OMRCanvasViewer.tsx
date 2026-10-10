@@ -143,24 +143,30 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
             ctx.shadowBlur = 4;
             ctx.fillText('✘', markTargetX, centerY);
           } else if (item.status === 'KOSONG') {
-            // Yellow / Amber Blank Mark
-            ctx.fillStyle = '#d97706';
-            ctx.font = `bold ${Math.max(14, Math.round(boxH * 0.8))}px "Plus Jakarta Sans", sans-serif`;
+            // Kuning untuk jawapan kosong
+            ctx.fillStyle = '#eab308';
+            ctx.strokeStyle = '#ca8a04';
+            ctx.font = `bold ${Math.max(14, Math.round(boxH * 0.85))}px "Plus Jakarta Sans", sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(234, 179, 8, 0.4)';
+            ctx.shadowBlur = 4;
             ctx.fillText('○', markTargetX, centerY);
           } else if (item.status === 'DOUBLE_MARK') {
-            // Orange Double Mark Warning
-            ctx.fillStyle = '#ea580c';
-            ctx.font = `bold ${Math.max(14, Math.round(boxH * 0.8))}px "Plus Jakarta Sans", sans-serif`;
+            // Kuning untuk jawapan tidak jelas / samar / dwi-tanda
+            ctx.fillStyle = '#eab308';
+            ctx.strokeStyle = '#ca8a04';
+            ctx.font = `bold ${Math.max(14, Math.round(boxH * 0.85))}px "Plus Jakarta Sans", sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(234, 179, 8, 0.4)';
+            ctx.shadowBlur = 4;
             ctx.fillText('⚠', markTargetX, centerY);
           }
           ctx.restore();
         }
 
-        // 2b. Draw Correct Answer Text ("Betul: C") on the right side if wrong/blank/ambiguous
+        // 2b. Draw Correct Answer Text ("Betul: C") on the right side if wrong/blank/unclear
         if (showCorrections && item.status !== 'BETUL') {
           ctx.save();
           const labelX = boxXmax + 12;
@@ -170,21 +176,27 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           ctx.textBaseline = 'middle';
 
           // Background pill for clear legibility on top of paper
-          const text = `Betul: ${correctOpt}`;
+          const isSalah = item.status === 'SALAH';
+          const text = isSalah
+            ? `Betul: ${correctOpt}`
+            : item.status === 'KOSONG'
+            ? `Kosong (${correctOpt})`
+            : `Tidak Jelas (${correctOpt})`;
+
           const textMetrics = ctx.measureText(text);
-          const pillWidth = textMetrics.width + 12;
+          const pillWidth = textMetrics.width + 14;
           const pillHeight = fontSize + 6;
 
-          ctx.fillStyle = item.status === 'SALAH' ? '#fee2e2' : '#fef3c7';
-          ctx.strokeStyle = item.status === 'SALAH' ? '#ef4444' : '#f59e0b';
+          ctx.fillStyle = isSalah ? '#fee2e2' : '#fef9c3';
+          ctx.strokeStyle = isSalah ? '#ef4444' : '#eab308';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.roundRect(labelX, centerY - pillHeight / 2, pillWidth, pillHeight, 3);
           ctx.fill();
           ctx.stroke();
 
-          // Text inside pill
-          ctx.fillStyle = item.status === 'SALAH' ? '#991b1b' : '#92400e';
+          // Text inside pill (Merah jika salah, Kuning/Amber jika tidak jelas/kosong)
+          ctx.fillStyle = isSalah ? '#991b1b' : '#854d0e';
           ctx.fillText(text, labelX + 6, centerY);
           ctx.restore();
         }

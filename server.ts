@@ -168,18 +168,18 @@ Tugas anda adalah:
    - Simpan nama penuh murid dalam "nama_pelajar". Jika ruangan nama benar-benar kosong, letakkan "Murid Tanpa Nama".
 
 2. PENGECAMAN LOREKAN BULATAN OMR (1 hingga ${totalQuestions}):
-   - Imbas bulatan pilihan jawapan bagi setiap baris soalan.
+   - Gunakan Kotak Hitam Jalur Y (Row Timing Marks) di sebelah nombor soalan dan Kotak Hitam Jalur X (Column Timing Marks) di atas huruf A-E untuk mengunci kedudukan baris & lajur dengan tepat.
    - Kenal pasti pilihan murid (A, B, C, D atau E).
    - Jika kosong: jawapan_pelajar: "TIADA_JAWAPAN".
-   - Jika tanda lebih 1: jawapan_pelajar: "AMBIGU/DOUBLE_MARK".
+   - Jika tanda tidak jelas / lebih dari 1: jawapan_pelajar: "AMBIGU/DOUBLE_MARK".
    - Bandingkan dengan SKEMA JAWAPAN:
      ${answerKeyFormatted || `1:A, 2:B, 3:C, 4:D, 5:E ... sehingga ${totalQuestions}`}
 
-3. STATUS & ANNOTATION:
+3. STATUS & ANNOTATION (WARNA HIJAU UNTUK BETUL, MERAH UNTUK SALAH, KUNING UNTUK TIDAK JELAS/KOSONG):
    - BETUL: simbol "✔", warna "GREEN", teks_tambahan: ""
    - SALAH: simbol "✘", warna "RED", teks_tambahan: "Jawapan Betul: " + [jawapan_sebenar]
    - KOSONG: simbol "○", warna "YELLOW", teks_tambahan: "Kosong (Betul: " + [jawapan_sebenar] + ")"
-   - DOUBLE_MARK: simbol "⚠", warna "ORANGE", teks_tambahan: "Dwi-Tanda (Betul: " + [jawapan_sebenar] + ")"
+   - DOUBLE_MARK / TIDAK_JELAS: simbol "⚠", warna "YELLOW", teks_tambahan: "Tidak Jelas (Betul: " + [jawapan_sebenar] + ")"
 
 4. KIRAAN KEPUTUSAN:
    - jawapan_betul: bilangan BETUL
