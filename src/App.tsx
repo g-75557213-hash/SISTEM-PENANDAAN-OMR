@@ -595,15 +595,16 @@ export default function App() {
                 <span>Jana Templat</span>
               </button>
 
-              {/* Dedicated Admin API Keys Button */}
+              {/* Dedicated Admin Modal Button (Protected by KEA8019) */}
               <button
                 type="button"
                 onClick={() => setIsAdminModalOpen(true)}
-                className="px-2.5 sm:px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
-                title="Bahagian Admin: Pengurusan & Penambahan Kunci Gemini API"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-amber-300 hover:text-white border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
+                title="Mod Pentadbir: Pengurusan Kod Akaun Guru & Kunci API (Kata Laluan: KEA8019)"
               >
-                <Key className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="hidden sm:inline">Admin Kunci API</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Mod Admin</span>
+                <span className="sm:hidden">Admin</span>
               </button>
 
               {currentUser ? (
@@ -1139,6 +1140,10 @@ export default function App() {
         onLogin={handleLogin}
         onClose={currentUser ? () => setIsAuthModalOpen(false) : undefined}
         defaultCode={currentUser?.accessCode || ''}
+        onOpenAdmin={() => {
+          setIsAuthModalOpen(false);
+          setIsAdminModalOpen(true);
+        }}
       />
 
       {/* Admin Gemini API Key Manager Modal (Multi-Key Rotation Pool) */}

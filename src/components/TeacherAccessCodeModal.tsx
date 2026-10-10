@@ -7,11 +7,10 @@ import {
   User,
   ArrowRight,
   PlusCircle,
-  Clock,
-  Trash2,
   Check,
   ShieldCheck,
-  HelpCircle,
+  Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { getTeacherAvatarSvg, TEACHER_AVATAR_PRESETS } from '../utils/avatarUtils';
 
@@ -20,6 +19,7 @@ interface TeacherAccessCodeModalProps {
   onLogin: (user: TeacherUser) => void;
   onClose?: () => void;
   defaultCode?: string;
+  onOpenAdmin?: () => void;
 }
 
 export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
@@ -27,6 +27,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
   onLogin,
   onClose,
   defaultCode = '',
+  onOpenAdmin,
 }) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,57 +43,23 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
   const [selectedPresetId, setSelectedPresetId] = useState(TEACHER_AVATAR_PRESETS[0].id);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
-  // Stored saved profiles on this browser
-  const [savedProfiles, setSavedProfiles] = useState<TeacherUser[]>([]);
+  // Remembered last used code on this specific device
+  const [lastUsedCode, setLastUsedCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      loadSavedProfiles();
+      const savedCode = localStorage.getItem('omr_last_used_code');
+      if (savedCode) {
+        setLastUsedCode(savedCode);
+        if (!inputCode) {
+          setInputCode(savedCode);
+        }
+      }
       if (defaultCode) {
         setInputCode(defaultCode);
       }
     }
   }, [isOpen, defaultCode]);
-
-  const loadSavedProfiles = () => {
-    try {
-      const raw = localStorage.getItem('omr_teacher_saved_profiles');
-      if (raw) {
-        const parsed = JSON.parse(raw) as TeacherUser[];
-        setSavedProfiles(parsed);
-      }
-    } catch {
-      setSavedProfiles([]);
-    }
-  };
-
-  const persistProfileToList = (user: TeacherUser) => {
-    try {
-      const raw = localStorage.getItem('omr_teacher_saved_profiles');
-      let list: TeacherUser[] = raw ? JSON.parse(raw) : [];
-      list = list.filter(
-        (u) => u.accessCode.toUpperCase() !== user.accessCode.toUpperCase()
-      );
-      list.unshift(user);
-      localStorage.setItem('omr_teacher_saved_profiles', JSON.stringify(list));
-      setSavedProfiles(list);
-    } catch {
-      // storage error ignored
-    }
-  };
-
-  const handleDeleteProfile = (codeToDelete: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const updated = savedProfiles.filter(
-        (p) => p.accessCode.toUpperCase() !== codeToDelete.toUpperCase()
-      );
-      localStorage.setItem('omr_teacher_saved_profiles', JSON.stringify(updated));
-      setSavedProfiles(updated);
-    } catch {
-      // ignore
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -101,7 +68,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     e.preventDefault();
     setLoginError(null);
 
-    const cleanCode = inputCode.trim().toUpperCase();
+    const cleanCode = inputCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     if (!cleanCode) {
       setLoginError('Sila masukkan Kod Akses Guru anda.');
       return;
@@ -123,15 +90,15 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
 
       if (res.ok && data.success && data.user) {
         const userToLogin: TeacherUser = data.user;
+        localStorage.setItem('omr_last_used_code', cleanCode);
         localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(userToLogin));
-        persistProfileToList(userToLogin);
         onLogin(userToLogin);
         return;
       }
 
-      // 2. Jika pelayan memaklumkan kod ini belum pernah didaftarkan
+      // 2. Jika pelayan memaklumkan kod ini belum dijumpai
       if (data.notFound) {
-        // Semak jika pengguna ini pernah mendaftar secara lokal pada peranti ini sebelum ini
+        // Semak jika pengguna pernah mendaftar secara lokal pada peranti ini sebelum ini
         const localData = localStorage.getItem(`omr_teacher_profile_${cleanCode}`);
         if (localData) {
           try {
@@ -149,7 +116,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
             });
             const regData = await regRes.json();
             if (regData.success && regData.user) {
-              persistProfileToList(regData.user);
+              localStorage.setItem('omr_last_used_code', cleanCode);
               onLogin(regData.user);
               return;
             }
@@ -160,7 +127,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
 
         setLoginError(
           data.error ||
-            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Kod ini belum pernah didaftarkan di mana-mana peranti. Sila pastikan ejaan betul atau cipta akaun di tab 'Cipta Kod Baharu'.`
+            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Sila pastikan ejaan betul atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`
         );
         return;
       }
@@ -169,13 +136,12 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     } catch (err: any) {
       // Fallback storan setempat jika internet / sambungan pelayan luar talian
       console.warn('Pelayan tidak dapat dihubungi, menyemak storan tempatan:', err);
-      const existing = savedProfiles.find((p) => p.accessCode.toUpperCase() === cleanCode);
       const profileKey = `omr_teacher_profile_${cleanCode}`;
       const savedData = localStorage.getItem(profileKey);
 
-      if (existing || savedData) {
-        const userToLogin: TeacherUser = existing || JSON.parse(savedData!);
-        persistProfileToList(userToLogin);
+      if (savedData) {
+        const userToLogin: TeacherUser = JSON.parse(savedData);
+        localStorage.setItem('omr_last_used_code', cleanCode);
         onLogin(userToLogin);
       } else {
         setLoginError(
@@ -185,31 +151,6 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  // Handle Quick Select from saved list
-  const handleQuickSelect = async (profile: TeacherUser) => {
-    setIsSubmitting(true);
-    try {
-      // Semak dengan pelayan bagi mendapatkan profil terkini merentas peranti
-      const res = await fetch('/api/teacher/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessCode: profile.accessCode }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.user) {
-        persistProfileToList(data.user);
-        onLogin(data.user);
-        return;
-      }
-    } catch {
-      // Guna profil tempatan jika pelayan tidak responsif
-    } finally {
-      setIsSubmitting(false);
-    }
-    persistProfileToList(profile);
-    onLogin(profile);
   };
 
   // Handle Register New Code (Enforces 1 unique code = 1 specific user)
@@ -251,7 +192,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       if (res.status === 409 || data.isExisting) {
         setRegisterError(
           data.error ||
-            `Kod akses "${cleanCode}" sudah didaftarkan untuk pengguna lain! Setiap kod adalah spesifik untuk seorang guru sahaja bagi mengelakkan data bertindih. Sila pilih kod unik lain, atau log masuk di tab 'Log Masuk Kod Sedia Ada' jika ini akaun anda.`
+            `Kod akses "${cleanCode}" sudah didaftarkan untuk pengguna lain! Setiap kod adalah spesifik untuk seorang guru sahaja. Sila pilih kod unik lain, atau log masuk di tab 'Log Masuk Kod Sedia Ada' jika ini akaun anda.`
         );
         return;
       }
@@ -262,8 +203,8 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       }
 
       const newUser: TeacherUser = data.user;
+      localStorage.setItem('omr_last_used_code', cleanCode);
       localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(newUser));
-      persistProfileToList(newUser);
       onLogin(newUser);
     } catch (err: any) {
       // Fallback jika pelayan luar talian
@@ -275,8 +216,8 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
         avatarUrl,
         createdAt: new Date().toISOString(),
       };
+      localStorage.setItem('omr_last_used_code', cleanCode);
       localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(newUser));
-      persistProfileToList(newUser);
       onLogin(newUser);
     } finally {
       setIsSubmitting(false);
@@ -300,7 +241,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                 </span>
               </h3>
               <p className="text-xs text-indigo-200 mt-0.5">
-                Tiada akaun Google atau emel diperlukan &bull; Akses pantas dan peribadi
+                Tiada akaun Google atau emel diperlukan &bull; Akses peribadi dan pantas
               </p>
             </div>
           </div>
@@ -343,20 +284,20 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
         {/* Modal Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
           {tab === 'login' ? (
-            /* TAB 1: LOGIN WITH CODE */
+            /* TAB 1: LOGIN WITH CODE (NO PUBLIC ACCOUNTS LIST OR DELETE BUTTONS) */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
                   <span>Masukkan Kod Akses Guru Anda:</span>
                   <span className="text-[11px] font-normal text-slate-400">
-                    (Contoh: CIKGU123, 7555, SAINS-SMKJ)
+                    (Contoh: CIKGU123, 7555, SAINS-01)
                   </span>
                 </label>
                 <div className="relative">
                   <input
                     type="text"
                     value={inputCode}
-                    onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+                    onChange={(e) => setInputCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
                     placeholder="MASUKKAN KOD ANDA..."
                     className="w-full pl-4 pr-10 py-3 bg-slate-950 border-2 border-indigo-500/40 focus:border-indigo-400 rounded-xl text-white font-mono font-bold text-sm sm:text-base tracking-wider uppercase focus:outline-none shadow-inner"
                     autoFocus
@@ -365,6 +306,20 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                     <KeyRound className="w-5 h-5" />
                   </div>
                 </div>
+
+                {/* Optional autofill for last used code on this specific device */}
+                {lastUsedCode && inputCode !== lastUsedCode && (
+                  <button
+                    type="button"
+                    onClick={() => setInputCode(lastUsedCode)}
+                    className="mt-2 text-[11px] text-indigo-300 hover:text-white flex items-center gap-1 bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition"
+                  >
+                    <RotateCcw className="w-3 h-3 text-indigo-400" />
+                    <span>Gunakan kod terakhir peranti ini:</span>
+                    <span className="font-mono font-bold text-emerald-300">{lastUsedCode}</span>
+                  </button>
+                )}
+
                 {loginError && (
                   <p className="text-xs text-rose-400 font-medium mt-1.5">{loginError}</p>
                 )}
@@ -388,75 +343,36 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                 )}
               </button>
 
-              {/* Saved accounts on this device */}
-              {savedProfiles.length > 0 && (
-                <div className="pt-2 border-t border-indigo-500/15">
-                  <span className="block text-[11px] font-bold text-slate-400 mb-2 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                    Akaun Pernah Digunakan di Peranti Ini:
-                  </span>
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {savedProfiles.map((p) => (
-                      <div
-                        key={p.accessCode}
-                        onClick={() => !isSubmitting && handleQuickSelect(p)}
-                        className={`group flex items-center justify-between p-2.5 bg-slate-950/80 hover:bg-indigo-950/50 border border-slate-800 hover:border-indigo-500/40 rounded-xl cursor-pointer transition ${
-                          isSubmitting ? 'opacity-50 pointer-events-none' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={p.avatarUrl || getTeacherAvatarSvg(p.accessCode, p.name)}
-                            alt={p.name}
-                            className="w-8 h-8 rounded-full object-cover ring-1 ring-indigo-500/40"
-                          />
-                          <div>
-                            <div className="text-xs font-bold text-white group-hover:text-indigo-300 transition">
-                              {p.name}
-                            </div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2 font-mono">
-                              <span className="bg-indigo-500/20 text-indigo-300 px-1 rounded">
-                                Kod: {p.accessCode}
-                              </span>
-                              <span>{p.schoolName || 'SMK JENERI'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-indigo-400 font-semibold group-hover:translate-x-0.5 transition hidden sm:inline">
-                            Pilih &rarr;
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteProfile(p.accessCode, e)}
-                            title="Padam rekod dari peranti"
-                            className="p-1 text-slate-500 hover:text-rose-400 rounded transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Informative info banner */}
               <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex items-start gap-2.5 text-[11px] text-slate-300">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-white block">Satu Kod Akses = Satu Akaun Guru Spesifik</span>
-                  Kod anda diselaraskan secara selamat ke pangkalan data. Jika anda log masuk di komputer, telefon, atau tablet lain menggunakan kod yang sama, semua maklumat profil, kelas, dan keputusan semakan OMR anda akan dibuka secara automatik.
+                  <span className="font-bold text-white block">Akaun Diselaraskan Merentas Peranti</span>
+                  Kod anda diselaraskan ke pangkalan data pusat. Anda boleh log masuk di mana-mana
+                  komputer, telefon pintar, atau tablet menggunakan kod yang sama dan semua data peperiksaan anda akan dipaparkan secara automatik.
                 </div>
               </div>
+
+              {/* Admin Mode shortcut */}
+              {onOpenAdmin && (
+                <div className="pt-2 border-t border-slate-800 text-center">
+                  <button
+                    type="button"
+                    onClick={onOpenAdmin}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-amber-300 transition py-1 px-2 rounded-lg hover:bg-slate-800"
+                  >
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Pentadbir Sistem: Lihat kod akaun guru atau padam akaun (Kata laluan: KEA8019)</span>
+                  </button>
+                </div>
+              )}
             </form>
           ) : (
             /* TAB 2: REGISTER NEW CODE */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <div className="p-2.5 bg-blue-950/40 border border-blue-500/30 rounded-xl text-[11px] text-blue-200">
                 <span className="font-bold text-white block mb-0.5">📌 Pendaftaran Kod Unik Peribadi</span>
-                Setiap kod adalah khusus untuk seorang guru sahaja. Kod ini tidak boleh digunakan oleh pengguna lain bagi melindungi rekod peperiksaan anda.
+                Setiap kod adalah khusus untuk seorang guru sahaja. Kod ini boleh digunakan pada mana-mana peranti lain selepas pendaftaran.
               </div>
 
               <div>
@@ -474,7 +390,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                   autoFocus
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Kod ini akan menjadi kunci pengenalan unik akaun anda di mana-mana peranti.
+                  Kod ini akan menjadi kunci pengenalan akaun anda di mana-mana peranti.
                 </span>
               </div>
 
@@ -560,6 +476,19 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
                   </>
                 )}
               </button>
+
+              {onOpenAdmin && (
+                <div className="pt-2 border-t border-slate-800 text-center">
+                  <button
+                    type="button"
+                    onClick={onOpenAdmin}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-amber-300 transition py-1 px-2 rounded-lg hover:bg-slate-800"
+                  >
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Akses Mod Pentadbir (Kata laluan: KEA8019)</span>
+                  </button>
+                </div>
+              )}
             </form>
           )}
         </div>

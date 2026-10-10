@@ -99,6 +99,36 @@ function markKeyStatus(key: string, status: 'active' | 'quota_exceeded' | 'error
   }
 }
 
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'KEA8019';
+
+// Middleware to verify admin password (KEA8019)
+function checkAdminAuth(req: express.Request, res: express.Response): boolean {
+  const provided =
+    (req.headers['x-admin-password'] as string) ||
+    req.body?.adminPassword ||
+    (req.query?.password as string);
+  if (provided === ADMIN_PASSWORD) {
+    return true;
+  }
+  res.status(401).json({
+    success: false,
+    error: 'Akses Ditolak. Sila masukkan kata laluan admin yang sah (KEA8019).',
+  });
+  return false;
+}
+
+// Admin API: Verify admin password (KEA8019)
+app.post('/api/admin/verify', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ success: true, message: 'Kata laluan pentadbir disahkan.' });
+  }
+  return res.status(401).json({
+    success: false,
+    error: 'Kata laluan salah! Akses ditolak. Sila masukkan kata laluan "KEA8019".',
+  });
+});
+
 // Admin API: List all API Keys (Masked, safe)
 app.get('/api/admin/keys', (req, res) => {
   const maskedList = memoryAdminKeys.map((item) => ({
@@ -356,6 +386,28 @@ function loadTeacherFoldersMap(): Record<string, any[]> {
 
 let memoryTeacherFolders: Record<string, any[]> = loadTeacherFoldersMap();
 
+// Auto-reconcile teachers from folders map so all existing data is registered and persistent
+let reconciledTeachers = false;
+for (const code of Object.keys(memoryTeacherFolders)) {
+  const clean = code.trim().toUpperCase();
+  if (clean && !memoryTeachers.some((t) => t.accessCode.toUpperCase() === clean)) {
+    console.log(`[Auto-Reconcile] Memulihkan akaun guru untuk kod: ${clean}`);
+    memoryTeachers.push({
+      id: `teacher_${clean}`,
+      accessCode: clean,
+      name: `Cikgu ${clean}`,
+      schoolName: 'SMK JENERI',
+      avatarUrl: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    reconciledTeachers = true;
+  }
+}
+if (reconciledTeachers) {
+  saveTeachers();
+}
+
 function saveTeacherFoldersMap() {
   try {
     fs.writeFileSync(TEACHER_DATA_FILE, JSON.stringify(memoryTeacherFolders, null, 2), 'utf-8');
@@ -363,6 +415,100 @@ function saveTeacherFoldersMap() {
     console.error('Gagal menyimpan teacher-data-db.json:', e);
   }
 }
+
+// ==========================================
+// ADMIN API: Pengurusan Akaun Guru (Hanya Mod Admin Boleh Akses)
+// ==========================================
+
+// Senarai semua akaun guru berdaftar merentas semua peranti (Hanya Admin)
+app.get('/api/admin/teachers', (req, res) => {
+  if (!checkAdminAuth(req, res)) return;
+
+  const enriched = memoryTeachers.map((t) => {
+    const code = t.accessCode.toUpperCase();
+    const folders = memoryTeacherFolders[code] || [];
+    let recordCount = 0;
+    for (const f of folders) {
+      if (Array.isArray(f.records)) recordCount += f.records.length;
+    }
+    return {
+      ...t,
+      folderCount: folders.length,
+      recordCount,
+    };
+  });
+
+  res.json({
+    success: true,
+    teachers: enriched,
+    totalCount: enriched.length,
+  });
+});
+
+// Padam akaun guru dari sistem (Hanya Admin Boleh Padam)
+app.delete('/api/admin/teachers/:code', (req, res) => {
+  if (!checkAdminAuth(req, res)) return;
+
+  const code = (req.params.code || '').trim().toUpperCase();
+  const initialLength = memoryTeachers.length;
+  memoryTeachers = memoryTeachers.filter((t) => t.accessCode.toUpperCase() !== code);
+  saveTeachers();
+
+  if (memoryTeacherFolders[code]) {
+    delete memoryTeacherFolders[code];
+    saveTeacherFoldersMap();
+  }
+
+  res.json({
+    success: true,
+    deleted: memoryTeachers.length < initialLength,
+    message: `Akaun guru dengan kod "${code}" berjaya dipadam dari sistem secara kekal.`,
+    remainingCount: memoryTeachers.length,
+  });
+});
+
+// Cipta atau kemaskini akaun guru secara terus oleh Admin
+app.post('/api/admin/teachers', (req, res) => {
+  if (!checkAdminAuth(req, res)) return;
+
+  const { accessCode, name, schoolName, avatarUrl } = req.body;
+  const cleanCode = (accessCode || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  const cleanName = (name || '').trim();
+  const cleanSchool = (schoolName || 'SMK JENERI').trim();
+
+  if (!cleanCode || cleanCode.length < 3) {
+    return res.status(400).json({ success: false, error: 'Kod Akses mestilah sekurang-kurangnya 3 aksara.' });
+  }
+
+  const existing = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+  if (existing) {
+    if (cleanName) existing.name = cleanName;
+    if (cleanSchool) existing.schoolName = cleanSchool;
+    if (avatarUrl) existing.avatarUrl = avatarUrl;
+    existing.updatedAt = new Date().toISOString();
+    saveTeachers();
+    return res.json({ success: true, teacher: existing, message: `Akaun "${cleanCode}" berjaya dikemaskini.` });
+  }
+
+  const newTeacher: StoredTeacher = {
+    id: `teacher_${cleanCode}`,
+    accessCode: cleanCode,
+    name: cleanName || `Cikgu ${cleanCode}`,
+    schoolName: cleanSchool,
+    avatarUrl: avatarUrl || '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  memoryTeachers.push(newTeacher);
+  saveTeachers();
+
+  res.json({
+    success: true,
+    teacher: newTeacher,
+    message: `Akaun guru dengan kod "${cleanCode}" berjaya didaftarkan oleh admin.`,
+  });
+});
 
 // 1. Semak kewujudan kod akses guru
 app.get('/api/teacher/check/:code', (req, res) => {
@@ -441,7 +587,22 @@ app.post('/api/teacher/login', (req, res) => {
       return res.status(400).json({ success: false, error: 'Sila masukkan Kod Akses Guru anda.' });
     }
 
-    const found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+    let found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+
+    // Auto-pulihkan akaun jika rekod folder wujud dalam database
+    if (!found && memoryTeacherFolders[cleanCode]) {
+      found = {
+        id: `teacher_${cleanCode}`,
+        accessCode: cleanCode,
+        name: `Cikgu ${cleanCode}`,
+        schoolName: 'SMK JENERI',
+        avatarUrl: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      memoryTeachers.push(found);
+      saveTeachers();
+    }
 
     if (found) {
       return res.json({

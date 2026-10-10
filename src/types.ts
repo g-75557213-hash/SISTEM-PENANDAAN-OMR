@@ -114,4 +114,10 @@ export interface AdminApiKey {
   errorMessage?: string;
 }
 
+export interface TeacherAccountAdminItem extends TeacherUser {
+  updatedAt?: string;
+  folderCount?: number;
+  recordCount?: number;
+}
+
 
