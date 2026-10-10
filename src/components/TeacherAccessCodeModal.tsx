@@ -79,75 +79,107 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     }
 
     setIsSubmitting(true);
-    try {
-      // 1. Hubungi pelayan pusat untuk mendapatkan profil akaun tepat bagi kod ini
-      const res = await fetch('/api/teacher/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessCode: cleanCode }),
-      });
-      const data = await res.json();
+    let userToLogin: TeacherUser | null = null;
+    let notFoundError: string | null = null;
 
-      if (res.ok && data.success && data.user) {
-        const userToLogin: TeacherUser = data.user;
+    try {
+      // 1. Cubaan Pertama: POST ke /api/teacher/login
+      try {
+        const res = await fetch('/api/teacher/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ accessCode: cleanCode }),
+        });
+
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.success && data.user) {
+            userToLogin = data.user;
+          }
+        } else if (res.status === 404) {
+          const data = await res.json().catch(() => null);
+          notFoundError =
+            data?.error ||
+            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Sila semak semula ejaan kod anda atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
+        }
+      } catch (postErr) {
+        console.warn('POST /api/teacher/login tidak responsif, mencuba fallback GET...', postErr);
+      }
+
+      // 2. Cubaan Kedua (Fallback Mobile GET): Sangat tahan lasak untuk telefon & rangkaian perlahan
+      if (!userToLogin && !notFoundError) {
+        try {
+          const getRes = await fetch(`/api/teacher/login/${encodeURIComponent(cleanCode)}?t=${Date.now()}`, {
+            headers: { 'Accept': 'application/json' },
+          });
+
+          if (getRes.ok) {
+            const getData = await getRes.json().catch(() => null);
+            if (getData && getData.success && getData.user) {
+              userToLogin = getData.user;
+            }
+          } else if (getRes.status === 404) {
+            const getData = await getRes.json().catch(() => null);
+            notFoundError =
+              getData?.error ||
+              `Kod akses "${cleanCode}" tidak dijumpai dalam pangkalan data sistem. Sila pastikan ejaan betul atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
+          }
+        } catch (getErr) {
+          console.warn('GET /api/teacher/login/:code gagal, mencuba /api/teacher/check...', getErr);
+        }
+      }
+
+      // 3. Cubaan Ketiga (Fallback Check):
+      if (!userToLogin && !notFoundError) {
+        try {
+          const checkRes = await fetch(`/api/teacher/check/${encodeURIComponent(cleanCode)}?t=${Date.now()}`);
+          if (checkRes.ok) {
+            const checkData = await checkRes.json().catch(() => null);
+            if (checkData && checkData.exists && checkData.teacher) {
+              userToLogin = checkData.teacher;
+            } else if (checkData && checkData.exists === false) {
+              notFoundError = `Kod akses "${cleanCode}" tidak dijumpai dalam pangkalan data sistem.`;
+            }
+          }
+        } catch (checkErr) {
+          console.warn('Semua endpoint rangkaian gagal diakses:', checkErr);
+        }
+      }
+
+      // Jika berjaya dijumpai daripada mana-mana laluan pelayan:
+      if (userToLogin) {
         localStorage.setItem('omr_last_used_code', cleanCode);
         localStorage.setItem(`omr_teacher_profile_${cleanCode}`, JSON.stringify(userToLogin));
         onLogin(userToLogin);
         return;
       }
 
-      // 2. Jika pelayan memaklumkan kod ini belum dijumpai
-      if (data.notFound) {
-        // Semak jika pengguna pernah mendaftar secara lokal pada peranti ini sebelum ini
-        const localData = localStorage.getItem(`omr_teacher_profile_${cleanCode}`);
-        if (localData) {
-          try {
-            const parsedLocal = JSON.parse(localData) as TeacherUser;
-            // Migrasi automatik ke pelayan pusat
-            const regRes = await fetch('/api/teacher/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                accessCode: cleanCode,
-                name: parsedLocal.name,
-                schoolName: parsedLocal.schoolName,
-                avatarUrl: parsedLocal.avatarUrl,
-              }),
-            });
-            const regData = await regRes.json();
-            if (regData.success && regData.user) {
-              localStorage.setItem('omr_last_used_code', cleanCode);
-              onLogin(regData.user);
-              return;
-            }
-          } catch {
-            // Abaikan ralat migrasi
-          }
-        }
-
-        setLoginError(
-          data.error ||
-            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Sila pastikan ejaan betul atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`
-        );
+      // Jika pelayan mengesahkan kod memang tiada:
+      if (notFoundError) {
+        setLoginError(notFoundError);
         return;
       }
 
-      setLoginError(data.error || 'Gagal mengesahkan kod akses dengan pelayan.');
-    } catch (err: any) {
-      // Fallback storan setempat jika internet / sambungan pelayan luar talian
-      console.warn('Pelayan tidak dapat dihubungi, menyemak storan tempatan:', err);
+      // Fallback storan setempat jika internet / pelayan sedang memulakan proses
       const profileKey = `omr_teacher_profile_${cleanCode}`;
       const savedData = localStorage.getItem(profileKey);
-
       if (savedData) {
-        const userToLogin: TeacherUser = JSON.parse(savedData);
+        const localUser: TeacherUser = JSON.parse(savedData);
         localStorage.setItem('omr_last_used_code', cleanCode);
-        onLogin(userToLogin);
-      } else {
-        setLoginError(
-          `Tidak dapat menyambung ke pelayan dan tiada akaun untuk kod "${cleanCode}" pada peranti ini. Sila semak sambungan internet anda.`
-        );
+        onLogin(localUser);
+        return;
       }
+
+      setLoginError(
+        `Rangkaian telefon sedang menyambung ke pelayan. Sila tekan butang "Masuk Akaun Guru" sekali lagi.`
+      );
+    } catch (err: any) {
+      setLoginError(
+        `Sila tekan butang "Masuk Akaun Guru" sekali lagi untuk menyambung ke pelayan.`
+      );
     } finally {
       setIsSubmitting(false);
     }

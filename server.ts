@@ -13,6 +13,20 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Enable full CORS for cross-device mobile access, webviews and iframe support
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-password, Cache-Control'
+  );
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -622,6 +636,47 @@ app.post('/api/teacher/login', (req, res) => {
   }
 });
 
+// 3b. Log masuk via GET (Sokongan maksimum pelayar telefon pintar tanpa sekatan preflight)
+app.get('/api/teacher/login/:code', (req, res) => {
+  try {
+    const cleanCode = (req.params.code || '').trim().toUpperCase();
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, error: 'Kod tidak sah.' });
+    }
+
+    let found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
+    if (!found && memoryTeacherFolders[cleanCode]) {
+      found = {
+        id: `teacher_${cleanCode}`,
+        accessCode: cleanCode,
+        name: `Cikgu ${cleanCode}`,
+        schoolName: 'SMK JENERI',
+        avatarUrl: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      memoryTeachers.push(found);
+      saveTeachers();
+    }
+
+    if (found) {
+      return res.json({
+        success: true,
+        user: found,
+        message: `Selamat kembali, ${found.name}! Akaun anda berjaya diakses.`,
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      notFound: true,
+      error: `Kod akses "${cleanCode}" tidak dijumpai dalam sistem.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Ralat log masuk pelayan', details: err?.message });
+  }
+});
+
 // 4. Kemas kini profil guru (Nama, Sekolah, Avatar) diselaraskan ke semua peranti
 app.put('/api/teacher/profile', (req, res) => {
   try {
@@ -1080,6 +1135,15 @@ function generateIntelligentOMRFallback(
     },
   };
 }
+
+// Ensure any unhandled /api/* route always returns JSON instead of falling through to Vite HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    notFound: true,
+    error: `Laluan API ${req.method} ${req.path} tidak dijumpai.`,
+  });
+});
 
 // Development Vite integration or production static serving
 async function startServer() {
