@@ -364,16 +364,46 @@ interface StoredTeacher {
 const TEACHERS_FILE = path.join(__dirname, 'teachers-db.json');
 const TEACHER_DATA_FILE = path.join(__dirname, 'teacher-data-db.json');
 
+const DEFAULT_TEACHERS: StoredTeacher[] = [
+  {
+    id: 'teacher_123',
+    accessCode: '123',
+    name: 'Chairel',
+    schoolName: 'SMK JENERI',
+    avatarUrl: '',
+    createdAt: '2026-10-10T02:34:50.514Z',
+    updatedAt: '2026-10-10T02:34:50.514Z',
+  },
+  {
+    id: 'teacher_12345',
+    accessCode: '12345',
+    name: 'Cikgu 12345',
+    schoolName: 'SMK JENERI',
+    avatarUrl: '',
+    createdAt: '2026-10-10T02:27:48.321Z',
+    updatedAt: '2026-10-10T02:27:48.321Z',
+  },
+];
+
 function loadTeachers(): StoredTeacher[] {
+  let list: StoredTeacher[] = [];
   try {
     if (fs.existsSync(TEACHERS_FILE)) {
       const data = fs.readFileSync(TEACHERS_FILE, 'utf-8');
-      return JSON.parse(data);
+      list = JSON.parse(data);
     }
   } catch (e) {
     console.error('Gagal membaca teachers-db.json:', e);
   }
-  return [];
+
+  // Ensure default accounts like 123 are always persistent
+  for (const def of DEFAULT_TEACHERS) {
+    if (!list.some((t) => t.accessCode.toUpperCase() === def.accessCode.toUpperCase())) {
+      list.push(def);
+    }
+  }
+
+  return list;
 }
 
 let memoryTeachers: StoredTeacher[] = loadTeachers();
@@ -526,6 +556,7 @@ app.post('/api/admin/teachers', (req, res) => {
 
 // 1. Semak kewujudan kod akses guru
 app.get('/api/teacher/check/:code', (req, res) => {
+  memoryTeachers = loadTeachers();
   const code = (req.params.code || '').trim().toUpperCase();
   const found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === code);
   if (found) {
@@ -601,6 +632,9 @@ app.post('/api/teacher/login', (req, res) => {
       return res.status(400).json({ success: false, error: 'Sila masukkan Kod Akses Guru anda.' });
     }
 
+    // Refresh memory from database file (and default accounts)
+    memoryTeachers = loadTeachers();
+
     let found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
 
     // Auto-pulihkan akaun jika rekod folder wujud dalam database
@@ -639,6 +673,7 @@ app.post('/api/teacher/login', (req, res) => {
 // 3b. Log masuk via GET (Sokongan maksimum pelayar telefon pintar tanpa sekatan preflight)
 app.get('/api/teacher/login/:code', (req, res) => {
   try {
+    memoryTeachers = loadTeachers();
     const cleanCode = (req.params.code || '').trim().toUpperCase();
     if (!cleanCode) {
       return res.status(400).json({ success: false, error: 'Kod tidak sah.' });

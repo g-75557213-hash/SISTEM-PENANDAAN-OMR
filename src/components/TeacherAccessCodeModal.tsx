@@ -87,6 +87,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       try {
         const res = await fetch('/api/teacher/login', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -94,38 +95,39 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
           body: JSON.stringify({ accessCode: cleanCode }),
         });
 
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data && data.success && data.user) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (res.ok && data.success && data.user) {
             userToLogin = data.user;
+          } else if (res.status === 404 || data.notFound) {
+            notFoundError =
+              data?.error ||
+              `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Sila semak semula ejaan kod anda atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
           }
-        } else if (res.status === 404) {
-          const data = await res.json().catch(() => null);
-          notFoundError =
-            data?.error ||
-            `Kod akses "${cleanCode}" tidak dijumpai dalam sistem. Sila semak semula ejaan kod anda atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
         }
       } catch (postErr) {
         console.warn('POST /api/teacher/login tidak responsif, mencuba fallback GET...', postErr);
       }
 
-      // 2. Cubaan Kedua (Fallback Mobile GET): Sangat tahan lasak untuk telefon & rangkaian perlahan
+      // 2. Cubaan Kedua (Fallback Mobile GET): Sangat pantas dan tahan lasak
       if (!userToLogin && !notFoundError) {
         try {
           const getRes = await fetch(`/api/teacher/login/${encodeURIComponent(cleanCode)}?t=${Date.now()}`, {
+            credentials: 'include',
             headers: { 'Accept': 'application/json' },
           });
 
-          if (getRes.ok) {
-            const getData = await getRes.json().catch(() => null);
-            if (getData && getData.success && getData.user) {
+          const getContentType = getRes.headers.get('content-type') || '';
+          if (getContentType.includes('application/json')) {
+            const getData = await getRes.json();
+            if (getRes.ok && getData.success && getData.user) {
               userToLogin = getData.user;
+            } else if (getRes.status === 404 || getData.notFound) {
+              notFoundError =
+                getData?.error ||
+                `Kod akses "${cleanCode}" tidak dijumpai dalam pangkalan data sistem. Sila pastikan ejaan betul atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
             }
-          } else if (getRes.status === 404) {
-            const getData = await getRes.json().catch(() => null);
-            notFoundError =
-              getData?.error ||
-              `Kod akses "${cleanCode}" tidak dijumpai dalam pangkalan data sistem. Sila pastikan ejaan betul atau cipta akaun baharu di tab 'Cipta Kod Baharu'.`;
           }
         } catch (getErr) {
           console.warn('GET /api/teacher/login/:code gagal, mencuba /api/teacher/check...', getErr);
@@ -135,9 +137,13 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       // 3. Cubaan Ketiga (Fallback Check):
       if (!userToLogin && !notFoundError) {
         try {
-          const checkRes = await fetch(`/api/teacher/check/${encodeURIComponent(cleanCode)}?t=${Date.now()}`);
-          if (checkRes.ok) {
-            const checkData = await checkRes.json().catch(() => null);
+          const checkRes = await fetch(`/api/teacher/check/${encodeURIComponent(cleanCode)}?t=${Date.now()}`, {
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' },
+          });
+          const checkContentType = checkRes.headers.get('content-type') || '';
+          if (checkContentType.includes('application/json')) {
+            const checkData = await checkRes.json();
             if (checkData && checkData.exists && checkData.teacher) {
               userToLogin = checkData.teacher;
             } else if (checkData && checkData.exists === false) {
@@ -163,7 +169,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
         return;
       }
 
-      // Fallback storan setempat jika internet / pelayan sedang memulakan proses
+      // Fallback storan setempat jika peranti ini pernah menyimpan profil ini
       const profileKey = `omr_teacher_profile_${cleanCode}`;
       const savedData = localStorage.getItem(profileKey);
       if (savedData) {
@@ -174,7 +180,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
       }
 
       setLoginError(
-        `Rangkaian telefon sedang menyambung ke pelayan. Sila tekan butang "Masuk Akaun Guru" sekali lagi.`
+        `Pelayan sedang memproses sambungan. Sila tekan butang "Masuk Akaun Guru" sekali lagi.`
       );
     } catch (err: any) {
       setLoginError(
@@ -211,6 +217,7 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
     try {
       const res = await fetch('/api/teacher/register', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accessCode: cleanCode,
