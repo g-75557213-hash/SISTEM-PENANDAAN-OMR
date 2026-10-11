@@ -1,11 +1,5 @@
 // Canvas generator for standard Malaysian A4 OMR Examination Answer Sheets
-// Based on exact template layout with A4 single page guarantee, Braille identifiers, and dedicated side correction area.
-import {
-  getBrailleForNumber,
-  getBrailleForOption,
-  drawBrailleNumberPattern,
-  drawBrailleOptionPattern,
-} from './brailleUtils';
+// Based on exact template layout with A4 single page guarantee and dedicated side correction area.
 
 export interface DrawOMROptions {
   studentName?: string;
@@ -320,25 +314,10 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
       ctx.fillStyle = '#000000';
       ctx.fillRect(bx - 9, headerY - 32, 18, 10);
 
-      // KOD BRAILLE LAJUR A, B, C, D (E):
-      // Dilukis di atas huruf pilihan untuk memudahkan sistem mengecam lajur jawapan ABCD
-      drawBrailleOptionPattern(ctx, bx, headerY - 14, optLetter, {
-        dotRadius: 1.6,
-        spacingX: 3.8,
-        spacingY: 3.8,
-        fillColor: '#000000',
-      });
-
       // Huruf Pilihan A B C D E
       ctx.fillStyle = '#000000';
       ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
       ctx.fillText(optLetter, bx, headerY + 4);
-
-      // Teks Unicode Braille kecil di bawah huruf sebagai rujukan visual dwibahasa (Hitam & Putih)
-      const brailleChar = getBrailleForOption(optLetter);
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = '#000000';
-      ctx.fillText(brailleChar, bx, headerY + 18);
     }
 
     // Side column header: "CATATAN / SEMAKAN" (Hitam & Putih)
@@ -379,26 +358,6 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${q}`, colX, centerY);
-
-      // KOD BRAILLE BAGI NOMBOR SOALAN (1 HINGGA NOMBOR TERAKHIR)
-      // Membantu pengecaman baris jawapan nombor soalan secara automatik & aksesibiliti
-      const brailleNumText = getBrailleForNumber(q);
-      const brailleX = colX + (q >= 10 ? 28 : 22);
-
-      // Lukis titik sel Braille piawai
-      drawBrailleNumberPattern(ctx, brailleX, centerY - 6, q, {
-        dotRadius: 1.4,
-        spacingX: 3.2,
-        spacingY: 3.2,
-        cellGap: 2.5,
-        fillColor: '#000000',
-      });
-
-      // Teks Unicode Braille lembut di bawah/sisi
-      ctx.font = '10px sans-serif';
-      ctx.fillStyle = '#64748b';
-      ctx.textAlign = 'left';
-      ctx.fillText(brailleNumText, brailleX, centerY + 8);
 
       // Student answer & Correct answer
       const studentAns = filledAnswers[q];
