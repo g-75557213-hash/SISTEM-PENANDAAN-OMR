@@ -363,27 +363,36 @@ interface StoredTeacher {
 
 const TEACHERS_FILE = path.join(__dirname, 'teachers-db.json');
 const TEACHER_DATA_FILE = path.join(__dirname, 'teacher-data-db.json');
+const DELETED_TEACHERS_FILE = path.join(__dirname, 'deleted-teachers-db.json');
 
-const DEFAULT_TEACHERS: StoredTeacher[] = [
-  {
-    id: 'teacher_123',
-    accessCode: '123',
-    name: 'Chairel',
-    schoolName: 'SMK JENERI',
-    avatarUrl: '',
-    createdAt: '2026-10-10T02:34:50.514Z',
-    updatedAt: '2026-10-10T02:34:50.514Z',
-  },
-  {
-    id: 'teacher_12345',
-    accessCode: '12345',
-    name: 'Cikgu 12345',
-    schoolName: 'SMK JENERI',
-    avatarUrl: '',
-    createdAt: '2026-10-10T02:27:48.321Z',
-    updatedAt: '2026-10-10T02:27:48.321Z',
-  },
-];
+function loadDeletedCodes(): Set<string> {
+  try {
+    if (fs.existsSync(DELETED_TEACHERS_FILE)) {
+      const data = fs.readFileSync(DELETED_TEACHERS_FILE, 'utf-8');
+      const arr = JSON.parse(data);
+      if (Array.isArray(arr)) {
+        return new Set(arr.map((c: string) => String(c).trim().toUpperCase()));
+      }
+    }
+  } catch (e) {
+    console.error('Gagal membaca deleted-teachers-db.json:', e);
+  }
+  return new Set<string>();
+}
+
+let memoryDeletedTeacherCodes: Set<string> = loadDeletedCodes();
+
+function saveDeletedCodes() {
+  try {
+    fs.writeFileSync(
+      DELETED_TEACHERS_FILE,
+      JSON.stringify(Array.from(memoryDeletedTeacherCodes), null, 2),
+      'utf-8'
+    );
+  } catch (e) {
+    console.error('Gagal menyimpan deleted-teachers-db.json:', e);
+  }
+}
 
 function loadTeachers(): StoredTeacher[] {
   let list: StoredTeacher[] = [];
@@ -396,12 +405,9 @@ function loadTeachers(): StoredTeacher[] {
     console.error('Gagal membaca teachers-db.json:', e);
   }
 
-  // Ensure default accounts like 123 are always persistent
-  for (const def of DEFAULT_TEACHERS) {
-    if (!list.some((t) => t.accessCode.toUpperCase() === def.accessCode.toUpperCase())) {
-      list.push(def);
-    }
-  }
+  // Tapis akaun yang telah dipadam secara kekal oleh Pentadbir
+  const deleted = loadDeletedCodes();
+  list = list.filter((t) => !deleted.has(t.accessCode.toUpperCase()));
 
   return list;
 }
@@ -430,11 +436,15 @@ function loadTeacherFoldersMap(): Record<string, any[]> {
 
 let memoryTeacherFolders: Record<string, any[]> = loadTeacherFoldersMap();
 
-// Auto-reconcile teachers from folders map so all existing data is registered and persistent
+// Auto-reconcile teachers from folders map so non-deleted existing data is registered and persistent
 let reconciledTeachers = false;
 for (const code of Object.keys(memoryTeacherFolders)) {
   const clean = code.trim().toUpperCase();
-  if (clean && !memoryTeachers.some((t) => t.accessCode.toUpperCase() === clean)) {
+  if (
+    clean &&
+    !memoryDeletedTeacherCodes.has(clean) &&
+    !memoryTeachers.some((t) => t.accessCode.toUpperCase() === clean)
+  ) {
     console.log(`[Auto-Reconcile] Memulihkan akaun guru untuk kod: ${clean}`);
     memoryTeachers.push({
       id: `teacher_${clean}`,
@@ -468,19 +478,26 @@ function saveTeacherFoldersMap() {
 app.get('/api/admin/teachers', (req, res) => {
   if (!checkAdminAuth(req, res)) return;
 
-  const enriched = memoryTeachers.map((t) => {
-    const code = t.accessCode.toUpperCase();
-    const folders = memoryTeacherFolders[code] || [];
-    let recordCount = 0;
-    for (const f of folders) {
-      if (Array.isArray(f.records)) recordCount += f.records.length;
-    }
-    return {
-      ...t,
-      folderCount: folders.length,
-      recordCount,
-    };
-  });
+  // Sentiasa selaraskan dengan storan terkini dari cakera
+  memoryDeletedTeacherCodes = loadDeletedCodes();
+  memoryTeachers = loadTeachers();
+  memoryTeacherFolders = loadTeacherFoldersMap();
+
+  const enriched = memoryTeachers
+    .filter((t) => !memoryDeletedTeacherCodes.has(t.accessCode.toUpperCase()))
+    .map((t) => {
+      const code = t.accessCode.toUpperCase();
+      const folders = memoryTeacherFolders[code] || [];
+      let recordCount = 0;
+      for (const f of folders) {
+        if (Array.isArray(f.records)) recordCount += f.records.length;
+      }
+      return {
+        ...t,
+        folderCount: folders.length,
+        recordCount,
+      };
+    });
 
   res.json({
     success: true,
@@ -489,23 +506,38 @@ app.get('/api/admin/teachers', (req, res) => {
   });
 });
 
-// Padam akaun guru dari sistem (Hanya Admin Boleh Padam)
+// Padam akaun guru dari sistem secara kekal (Hanya Admin Boleh Padam)
 app.delete('/api/admin/teachers/:code', (req, res) => {
   if (!checkAdminAuth(req, res)) return;
 
   const code = (req.params.code || '').trim().toUpperCase();
+  if (!code) {
+    return res.status(400).json({ success: false, error: 'Kod guru tidak sah.' });
+  }
+
+  // 1. Rekod kod ini dalam pangkalan data akaun yang dipadam agar tidak boleh dihidupkan semula
+  memoryDeletedTeacherCodes.add(code);
+  saveDeletedCodes();
+
+  // 2. Padam daripada senarai guru aktif dan simpan teachers-db.json
   const initialLength = memoryTeachers.length;
   memoryTeachers = memoryTeachers.filter((t) => t.accessCode.toUpperCase() !== code);
   saveTeachers();
 
-  if (memoryTeacherFolders[code]) {
-    delete memoryTeacherFolders[code];
-    saveTeacherFoldersMap();
+  // 3. Padam semua data folder dan kertas jawapan berkaitan kod ini (case-insensitive)
+  for (const k of Object.keys(memoryTeacherFolders)) {
+    if (k.trim().toUpperCase() === code) {
+      delete memoryTeacherFolders[k];
+    }
   }
+  saveTeacherFoldersMap();
+
+  console.log(`[Admin] Akaun guru kod "${code}" berjaya dipadam sepenuhnya dari sistem.`);
 
   res.json({
     success: true,
-    deleted: memoryTeachers.length < initialLength,
+    deleted: true,
+    deletedCode: code,
     message: `Akaun guru dengan kod "${code}" berjaya dipadam dari sistem secara kekal.`,
     remainingCount: memoryTeachers.length,
   });
@@ -522,6 +554,12 @@ app.post('/api/admin/teachers', (req, res) => {
 
   if (!cleanCode || cleanCode.length < 3) {
     return res.status(400).json({ success: false, error: 'Kod Akses mestilah sekurang-kurangnya 3 aksara.' });
+  }
+
+  // Jika kod ini pernah dipadam, nyah-padam kod ini kerana Admin sengaja menciptanya semula
+  if (memoryDeletedTeacherCodes.has(cleanCode)) {
+    memoryDeletedTeacherCodes.delete(cleanCode);
+    saveDeletedCodes();
   }
 
   const existing = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
@@ -556,8 +594,14 @@ app.post('/api/admin/teachers', (req, res) => {
 
 // 1. Semak kewujudan kod akses guru
 app.get('/api/teacher/check/:code', (req, res) => {
+  memoryDeletedTeacherCodes = loadDeletedCodes();
   memoryTeachers = loadTeachers();
   const code = (req.params.code || '').trim().toUpperCase();
+
+  if (memoryDeletedTeacherCodes.has(code)) {
+    return res.json({ exists: false, deleted: true, message: 'Akaun ini telah dipadam oleh pentadbir.' });
+  }
+
   const found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === code);
   if (found) {
     res.json({ exists: true, teacher: found });
@@ -586,6 +630,12 @@ app.post('/api/teacher/register', (req, res) => {
         success: false,
         error: 'Sila masukkan nama guru (cth: Cikgu Ahmad).',
       });
+    }
+
+    // Jika kod ini pernah dipadam, batalkan status padam kerana pengguna sengaja mendaftar kod ini
+    if (memoryDeletedTeacherCodes.has(cleanCode)) {
+      memoryDeletedTeacherCodes.delete(cleanCode);
+      saveDeletedCodes();
     }
 
     // Pastikan kod belum didaftarkan untuk pengguna lain
@@ -632,13 +682,24 @@ app.post('/api/teacher/login', (req, res) => {
       return res.status(400).json({ success: false, error: 'Sila masukkan Kod Akses Guru anda.' });
     }
 
-    // Refresh memory from database file (and default accounts)
+    // Refresh memory from database file
+    memoryDeletedTeacherCodes = loadDeletedCodes();
     memoryTeachers = loadTeachers();
+
+    // Sekat log masuk jika akaun telah dipadam oleh Admin
+    if (memoryDeletedTeacherCodes.has(cleanCode)) {
+      return res.status(404).json({
+        success: false,
+        notFound: true,
+        deleted: true,
+        error: `Akaun dengan kod akses "${cleanCode}" telah dipadam oleh pentadbir sistem. Kod ini tidak lagi aktif. Sila daftar kod baharu.`,
+      });
+    }
 
     let found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
 
-    // Auto-pulihkan akaun jika rekod folder wujud dalam database
-    if (!found && memoryTeacherFolders[cleanCode]) {
+    // Auto-pulihkan akaun jika rekod folder wujud dalam database dan belum dipadam
+    if (!found && memoryTeacherFolders[cleanCode] && !memoryDeletedTeacherCodes.has(cleanCode)) {
       found = {
         id: `teacher_${cleanCode}`,
         accessCode: cleanCode,
@@ -673,14 +734,25 @@ app.post('/api/teacher/login', (req, res) => {
 // 3b. Log masuk via GET (Sokongan maksimum pelayar telefon pintar tanpa sekatan preflight)
 app.get('/api/teacher/login/:code', (req, res) => {
   try {
+    memoryDeletedTeacherCodes = loadDeletedCodes();
     memoryTeachers = loadTeachers();
     const cleanCode = (req.params.code || '').trim().toUpperCase();
     if (!cleanCode) {
       return res.status(400).json({ success: false, error: 'Kod tidak sah.' });
     }
 
+    // Sekat jika dipadam
+    if (memoryDeletedTeacherCodes.has(cleanCode)) {
+      return res.status(404).json({
+        success: false,
+        notFound: true,
+        deleted: true,
+        error: `Akaun dengan kod akses "${cleanCode}" telah dipadam oleh pentadbir sistem.`,
+      });
+    }
+
     let found = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
-    if (!found && memoryTeacherFolders[cleanCode]) {
+    if (!found && memoryTeacherFolders[cleanCode] && !memoryDeletedTeacherCodes.has(cleanCode)) {
       found = {
         id: `teacher_${cleanCode}`,
         accessCode: cleanCode,
@@ -717,6 +789,14 @@ app.put('/api/teacher/profile', (req, res) => {
   try {
     const { accessCode, name, schoolName, avatarUrl } = req.body;
     const cleanCode = (accessCode || '').trim().toUpperCase();
+
+    if (memoryDeletedTeacherCodes.has(cleanCode)) {
+      return res.status(403).json({
+        success: false,
+        deleted: true,
+        error: 'Akaun ini telah dipadam oleh pentadbir sistem.',
+      });
+    }
 
     const target = memoryTeachers.find((t) => t.accessCode.toUpperCase() === cleanCode);
 
@@ -760,6 +840,13 @@ app.put('/api/teacher/profile', (req, res) => {
 // 5. Muat turun senarai folder kelas & rekod semakan pelajar untuk kod akses ini
 app.get('/api/teacher/folders/:code', (req, res) => {
   const code = (req.params.code || '').trim().toUpperCase();
+  if (memoryDeletedTeacherCodes.has(code)) {
+    return res.status(404).json({
+      success: false,
+      deleted: true,
+      error: 'Akaun ini telah dipadam oleh pentadbir sistem.',
+    });
+  }
   const folders = memoryTeacherFolders[code] || [];
   res.json({ success: true, folders });
 });
@@ -769,6 +856,14 @@ app.post('/api/teacher/folders/:code', (req, res) => {
   try {
     const code = (req.params.code || '').trim().toUpperCase();
     const { folders } = req.body;
+
+    if (memoryDeletedTeacherCodes.has(code)) {
+      return res.status(403).json({
+        success: false,
+        deleted: true,
+        error: 'Akaun ini telah dipadam oleh pentadbir sistem. Penyelarasan dihentikan.',
+      });
+    }
 
     if (!Array.isArray(folders)) {
       return res.status(400).json({ success: false, error: 'Format data folder tidak sah.' });

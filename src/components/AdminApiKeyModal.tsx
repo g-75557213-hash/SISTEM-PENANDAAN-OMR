@@ -37,6 +37,7 @@ interface AdminApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: 'teachers' | 'keys';
+  onTeacherDeleted?: (code: string) => void;
 }
 
 const ADMIN_REQUIRED_PASSWORD = 'KEA8019';
@@ -45,6 +46,7 @@ export const AdminApiKeyModal: React.FC<AdminApiKeyModalProps> = ({
   isOpen,
   onClose,
   defaultTab = 'teachers',
+  onTeacherDeleted,
 }) => {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -189,6 +191,7 @@ export const AdminApiKeyModal: React.FC<AdminApiKeyModalProps> = ({
   const handleDeleteTeacherConfirmed = async () => {
     if (!teacherToDelete) return;
     const code = teacherToDelete.accessCode;
+    const name = teacherToDelete.name;
     setDeletingCode(code);
     try {
       const res = await fetch(`/api/admin/teachers/${encodeURIComponent(code)}`, {
@@ -197,10 +200,33 @@ export const AdminApiKeyModal: React.FC<AdminApiKeyModalProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        // 1. Bersihkan storan peranti untuk akaun yang dipadam
+        try {
+          const upper = code.toUpperCase();
+          localStorage.removeItem(`omr_teacher_profile_${code}`);
+          localStorage.removeItem(`omr_teacher_profile_${upper}`);
+          localStorage.removeItem(`omr_folders_${code}`);
+          localStorage.removeItem(`omr_folders_${upper}`);
+          const lastUsed = localStorage.getItem('omr_last_used_code');
+          if (lastUsed && lastUsed.toUpperCase() === upper) {
+            localStorage.removeItem('omr_last_used_code');
+          }
+        } catch {
+          // ignore
+        }
+
+        // 2. Beritahu komponen induk (App.tsx) jika pengguna aktif sedang menggunakan akaun ini
+        if (onTeacherDeleted) {
+          onTeacherDeleted(code);
+        }
+
+        // 3. Kemas kini senarai tempatan dan muat semula dari pelayan
         setTeachersList((prev) => prev.filter((t) => t.accessCode.toUpperCase() !== code.toUpperCase()));
+        fetchTeachers();
+
         setFeedbackMessage({
           type: 'success',
-          text: `Akaun "${teacherToDelete.name}" (Kod: ${code}) berjaya dipadam dari sistem.`,
+          text: `Akaun "${name}" (Kod: ${code}) berjaya dipadam dari sistem secara kekal.`,
         });
       } else {
         setFeedbackMessage({

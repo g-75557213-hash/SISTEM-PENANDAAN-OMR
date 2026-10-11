@@ -157,7 +157,10 @@ export default function App() {
         })
           .then((res) => res.json())
           .then((data) => {
-            if (data.success && data.user) {
+            if (data.deleted || data.notFound || !data.success) {
+              console.warn('Akaun guru ini telah dipadam atau tidak sah di pelayan pusat:', parsed.accessCode);
+              handleTeacherDeleted(parsed.accessCode);
+            } else if (data.success && data.user) {
               setCurrentUser(data.user);
               localStorage.setItem('omr_teacher_active_user', JSON.stringify(data.user));
             }
@@ -258,6 +261,22 @@ export default function App() {
     setGradingResult(null);
     setSelectedImage(null);
     setIsAuthModalOpen(true);
+  };
+
+  // Handle Teacher Deleted by Admin
+  const handleTeacherDeleted = (deletedCode: string) => {
+    const clean = (deletedCode || '').trim().toUpperCase();
+    if (currentUser && currentUser.accessCode.toUpperCase() === clean) {
+      localStorage.removeItem('omr_teacher_active_user');
+      localStorage.removeItem(`omr_teacher_profile_${clean}`);
+      localStorage.removeItem(`omr_folders_${clean}`);
+      setCurrentUser(null);
+      setClassFolders([]);
+      setActiveClassId('');
+      setGradingResult(null);
+      setSelectedImage(null);
+      setIsAuthModalOpen(true);
+    }
   };
 
   // Handle Profile Update (Kemaskini setempat & selaraskan ke pelayan)
@@ -1150,6 +1169,7 @@ export default function App() {
       <AdminApiKeyModal
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
+        onTeacherDeleted={handleTeacherDeleted}
       />
 
       {/* Teacher Profile Modal (Shows Account Picture & Settings) */}

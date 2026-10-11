@@ -163,8 +163,17 @@ export const TeacherAccessCodeModal: React.FC<TeacherAccessCodeModalProps> = ({
         return;
       }
 
-      // Jika pelayan mengesahkan kod memang tiada:
+      // Jika pelayan mengesahkan kod memang tiada / telah dipadam:
       if (notFoundError) {
+        try {
+          localStorage.removeItem(`omr_teacher_profile_${cleanCode}`);
+          const lastUsed = localStorage.getItem('omr_last_used_code');
+          if (lastUsed && lastUsed.toUpperCase() === cleanCode) {
+            localStorage.removeItem('omr_last_used_code');
+          }
+        } catch {
+          // ignore
+        }
         setLoginError(notFoundError);
         return;
       }
