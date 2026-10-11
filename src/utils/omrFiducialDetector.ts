@@ -253,16 +253,19 @@ export function findSixFiducialMarkers(
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
 
-    // Search zones for the 6 markers strictly confined to margins:
-    // Left markers are in x: 0..16% (to the left of NAMA box!)
-    // Right markers are in x: 84%..100%
+    // Search zones for the 6 markers strictly confined to outer paper margins:
+    // Left markers are in x: 0..8% (completely isolated from student info box which starts at x >= 8.5%)
+    // Right markers are in x: 92%..100%
+    const maxLeftMarginX = Math.floor(width * 0.085);
+    const minRightMarginX = Math.floor(width * 0.915);
+
     const zones = {
-      topLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: 0, y2: Math.floor(height * 0.22) },
-      topRight: { x1: Math.floor(width * 0.82), x2: width, y1: 0, y2: Math.floor(height * 0.22) },
-      midLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
-      midRight: { x1: Math.floor(width * 0.82), x2: width, y1: Math.floor(height * 0.38), y2: Math.floor(height * 0.65) },
-      botLeft: { x1: 0, x2: Math.floor(width * 0.18), y1: Math.floor(height * 0.78), y2: height },
-      botRight: { x1: Math.floor(width * 0.82), x2: width, y1: Math.floor(height * 0.78), y2: height },
+      topLeft: { x1: 0, x2: maxLeftMarginX, y1: 0, y2: Math.floor(height * 0.20) },
+      topRight: { x1: minRightMarginX, x2: width, y1: 0, y2: Math.floor(height * 0.20) },
+      midLeft: { x1: 0, x2: maxLeftMarginX, y1: Math.floor(height * 0.40), y2: Math.floor(height * 0.65) },
+      midRight: { x1: minRightMarginX, x2: width, y1: Math.floor(height * 0.40), y2: Math.floor(height * 0.65) },
+      botLeft: { x1: 0, x2: maxLeftMarginX, y1: Math.floor(height * 0.80), y2: height },
+      botRight: { x1: minRightMarginX, x2: width, y1: Math.floor(height * 0.80), y2: height },
     };
 
     const tl = findSolidSquareBlobInZone(data, width, height, zones.topLeft, 'TL');
@@ -302,20 +305,21 @@ export function cropStudentNameBoxDataUrl(
     const w = canvas.width;
     const h = canvas.height;
 
-    let cropX = Math.round(w * 0.12);
-    let cropY = Math.round(h * 0.08);
-    let cropW = Math.round(w * 0.76);
-    let cropH = Math.round(h * 0.075);
+    // In the new layout, NAMA field is at x: 22%..90%, y: 6.5%..10%
+    let cropX = Math.round(w * 0.22);
+    let cropY = Math.round(h * 0.065);
+    let cropW = Math.round(w * 0.68);
+    let cropH = Math.round(h * 0.045);
 
     if (markers && (markers.topLeft.found || markers.topRight.found)) {
-      const leftX = markers.topLeft.found ? markers.topLeft.cx + markers.topLeft.w * 0.8 : w * 0.08;
-      const rightX = markers.topRight.found ? markers.topRight.cx - markers.topRight.w * 0.8 : w * 0.92;
-      const topY = markers.topLeft.found ? markers.topLeft.cy - 10 : h * 0.08;
+      const leftX = markers.topLeft.found ? markers.topLeft.cx + markers.topLeft.w * 3.5 : w * 0.22;
+      const rightX = markers.topRight.found ? markers.topRight.cx - markers.topRight.w * 1.5 : w * 0.90;
+      const topY = markers.topLeft.found ? markers.topLeft.cy - 10 : h * 0.065;
 
       cropX = Math.round(leftX);
       cropY = Math.max(0, Math.round(topY));
-      cropW = Math.round(rightX - leftX);
-      cropH = Math.round(h * 0.08);
+      cropW = Math.round(Math.max(100, rightX - leftX));
+      cropH = Math.round(h * 0.045);
     }
 
     const cropCanvas = document.createElement('canvas');
@@ -619,6 +623,13 @@ export function processOMRGridAnswers(
     if (detectedRowYList && detectedRowYList[rowInCol] !== undefined) {
       fineTunedCenterY = detectedRowYList[rowInCol];
       isTimingMarkFound = true;
+    }
+
+    // CRITICAL GUARANTEE: Answers strictly begin at Question 1, NEVER in the NAMA box!
+    // Question 1 row must be strictly below Section 2 banner (Y >= 315px reference)
+    const minRowAllowedY = mapPoint(refColX, 315 + rowInCol * refRowHeight * 0.80).y;
+    if (fineTunedCenterY < minRowAllowedY) {
+      fineTunedCenterY = mapPoint(refColX + refColumnWidth / 2, refCenterY).y;
     }
 
     // Local paper baseline measurement

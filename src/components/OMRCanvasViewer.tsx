@@ -77,8 +77,24 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           const rowInCol = col === 0 ? qNum - 1 : qNum - 1 - questionsPerCol;
           const colStartX = numCols === 2 ? (col === 0 ? w * 0.08 : w * 0.54) : w * 0.12;
           const colWidth = numCols === 2 ? w * 0.38 : w * 0.76;
-          const gridStartY = h * 0.26;
-          const rowHeight = (h * 0.65) / questionsPerCol;
+          const gridStartY = (345 / 1754) * h;
+          const rowHeight = Math.min((52 / 1754) * h, ((h - gridStartY - (240 / 1754) * h) / questionsPerCol));
+
+          boxXmin = colStartX;
+          boxXmax = colStartX + colWidth;
+          boxYmin = gridStartY + rowInCol * rowHeight;
+          boxYmax = boxYmin + rowHeight;
+        }
+
+        // CRITICAL GUARANTEE: Never render Question 1 annotations over the NAMA box (Y < 18.5% of height)
+        const minAllowedQuestionY = h * 0.185;
+        if (boxYmin < minAllowedQuestionY) {
+          const col = qNum <= questionsPerCol ? 0 : 1;
+          const rowInCol = col === 0 ? qNum - 1 : qNum - 1 - questionsPerCol;
+          const colStartX = numCols === 2 ? (col === 0 ? w * 0.08 : w * 0.54) : w * 0.12;
+          const colWidth = numCols === 2 ? w * 0.38 : w * 0.76;
+          const gridStartY = (345 / 1754) * h;
+          const rowHeight = Math.min((52 / 1754) * h, ((h - gridStartY - (240 / 1754) * h) / questionsPerCol));
 
           boxXmin = colStartX;
           boxXmax = colStartX + colWidth;

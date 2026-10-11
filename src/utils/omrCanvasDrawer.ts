@@ -63,31 +63,46 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
   ctx.fillRect(markerMargin, botMarkerY, markerSize, markerSize);
   ctx.fillRect(width - markerMargin - markerSize, botMarkerY, markerSize, markerSize);
 
-  // 2. Header Instructions (Bilingual Malay & English matching the uploaded image)
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#111827';
-  ctx.font = '500 23px "Plus Jakarta Sans", "Times New Roman", serif';
-  ctx.fillText(`Isikan Jawapan anda bagi ${sectionTitle} pada ruang di bawah`, 110, 68);
+  // 2. Header Title (Standard Malaysian OMR Sheet Format)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('BORANG JAWAPAN OMR A4 — PEPERIKSAAN OBJEKTIF', width / 2, 58);
 
-  ctx.font = 'italic 500 20px "Plus Jakarta Sans", "Times New Roman", serif';
-  ctx.fillStyle = '#374151';
-  ctx.fillText(`Fill in your answer for Section A in the space below`, 110, 102);
+  ctx.font = '500 16px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#475569';
+  ctx.fillText(`MATA PELAJARAN: ${subject.toUpperCase()}  |  ${sectionTitle.toUpperCase()}  |  FORMAT A4 STANDARD`, width / 2, 86);
 
-  // 3. Student Information Box (Exact layout matching template image)
-  // Rounded rectangular box with 2 rows: NAMA on top row, KELAS and SUBJEK on bottom row
-  const infoBoxX = 110;
-  const infoBoxY = 145;
-  const infoBoxW = width - 220;
-  const infoBoxH = 125;
-  const radius = 24;
+  // 3. SEKSYEN 1: Student Information Box (MAKLUMAT CALON - BUKAN RUANG JAWAPAN)
+  // Clearly demarcated container isolating student personal details from answer grid
+  const infoBoxX = 100;
+  const infoBoxY = 115;
+  const infoBoxW = width - 200;
+  const infoBoxH = 110;
+  const radius = 12;
 
   ctx.save();
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#334155';
 
-  // Outer rounded container
+  // Section 1 Header Tab
+  const tabW = 480;
+  const tabH = 24;
+  ctx.fillStyle = '#e2e8f0';
   ctx.beginPath();
-  ctx.roundRect(infoBoxX, infoBoxY, infoBoxW, infoBoxH, radius);
+  ctx.roundRect(infoBoxX, infoBoxY - tabH, tabW, tabH, [8, 8, 0, 0]);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('SEKSYEN 1: MAKLUMAT CALON (BUKAN RUANG JAWAPAN)', infoBoxX + 12, infoBoxY - tabH / 2);
+
+  // Outer container for student details
+  ctx.beginPath();
+  ctx.roundRect(infoBoxX, infoBoxY, infoBoxW, infoBoxH, [0, radius, radius, radius]);
   ctx.stroke();
 
   // Horizontal divider between row 1 (NAMA) and row 2 (KELAS/SUBJEK)
@@ -97,91 +112,102 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
   ctx.lineTo(infoBoxX + infoBoxW, rowDividerY);
   ctx.stroke();
 
-  // Row 1: NAMA label compartment (grey background with rounded top-left)
-  const labelNamaW = 160;
-  ctx.fillStyle = '#d1d5db'; // solid grey tone as in image
-  ctx.beginPath();
-  ctx.roundRect(infoBoxX, infoBoxY, labelNamaW, infoBoxH * 0.5, [radius, 0, 0, 0]);
-  ctx.fill();
-  ctx.stroke();
+  // Row 1: NAMA label compartment
+  const labelNamaW = 180;
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(infoBoxX, infoBoxY, labelNamaW, infoBoxH * 0.5);
+  ctx.strokeRect(infoBoxX, infoBoxY, labelNamaW, infoBoxH * 0.5);
 
-  // Vertical line after NAMA label
-  ctx.beginPath();
-  ctx.moveTo(infoBoxX + labelNamaW, infoBoxY);
-  ctx.lineTo(infoBoxX + labelNamaW, rowDividerY);
-  ctx.stroke();
-
-  // NAMA Text Label
-  ctx.fillStyle = '#000000';
-  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('NAMA', infoBoxX + labelNamaW / 2, infoBoxY + (infoBoxH * 0.25));
+  ctx.fillText('NAMA PENUH CALON', infoBoxX + labelNamaW / 2, infoBoxY + (infoBoxH * 0.25));
 
   // Student name value (if provided)
   if (studentName) {
     ctx.textAlign = 'left';
-    ctx.font = 'bold 22px "JetBrains Mono", monospace';
+    ctx.font = 'bold 20px "JetBrains Mono", monospace';
     ctx.fillText(studentName.toUpperCase(), infoBoxX + labelNamaW + 20, infoBoxY + (infoBoxH * 0.25));
+  } else {
+    // Blank line guide
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(infoBoxX + labelNamaW + 20, infoBoxY + (infoBoxH * 0.35));
+    ctx.lineTo(infoBoxX + infoBoxW - 30, infoBoxY + (infoBoxH * 0.35));
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
-  // Row 2: KELAS label compartment (grey background with rounded bottom-left)
-  const labelKelasW = 160;
-  const valueKelasW = 260;
+  // Row 2: KELAS label compartment
+  const labelKelasW = 180;
+  const valueKelasW = 280;
 
-  ctx.fillStyle = '#d1d5db';
-  ctx.beginPath();
-  ctx.roundRect(infoBoxX, rowDividerY, labelKelasW, infoBoxH * 0.5, [0, 0, 0, radius]);
-  ctx.fill();
-  ctx.stroke();
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(infoBoxX, rowDividerY, labelKelasW, infoBoxH * 0.5);
+  ctx.strokeRect(infoBoxX, rowDividerY, labelKelasW, infoBoxH * 0.5);
 
-  ctx.beginPath();
-  ctx.moveTo(infoBoxX + labelKelasW, rowDividerY);
-  ctx.lineTo(infoBoxX + labelKelasW, infoBoxY + infoBoxH);
-  ctx.stroke();
-
-  // KELAS Text Label
-  ctx.fillStyle = '#000000';
-  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('KELAS', infoBoxX + labelKelasW / 2, rowDividerY + (infoBoxH * 0.25));
+  ctx.fillText('KELAS / TINGKATAN', infoBoxX + labelKelasW / 2, rowDividerY + (infoBoxH * 0.25));
 
   // Student class value (if provided)
   if (studentClass) {
     ctx.textAlign = 'left';
-    ctx.font = 'bold 20px "JetBrains Mono", monospace';
+    ctx.font = 'bold 18px "JetBrains Mono", monospace';
     ctx.fillText(studentClass.toUpperCase(), infoBoxX + labelKelasW + 20, rowDividerY + (infoBoxH * 0.25));
   }
 
-  // Row 2: Vertical separator before SUBJEK
+  // Row 2: SUBJEK label compartment
   const subjekStartX = infoBoxX + labelNamaW + valueKelasW;
   const labelSubjekW = 160;
 
-  ctx.beginPath();
-  ctx.moveTo(subjekStartX, rowDividerY);
-  ctx.lineTo(subjekStartX, infoBoxY + infoBoxH);
-  ctx.stroke();
-
-  // SUBJEK label compartment (grey background)
-  ctx.fillStyle = '#d1d5db';
+  ctx.fillStyle = '#f1f5f9';
   ctx.fillRect(subjekStartX, rowDividerY, labelSubjekW, infoBoxH * 0.5);
   ctx.strokeRect(subjekStartX, rowDividerY, labelSubjekW, infoBoxH * 0.5);
 
-  // SUBJEK Text Label
-  ctx.fillStyle = '#000000';
-  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('SUBJEK', subjekStartX + labelSubjekW / 2, rowDividerY + (infoBoxH * 0.25));
 
   // SUBJEK Value compartment
   const subjekValueX = subjekStartX + labelSubjekW;
   ctx.textAlign = 'center';
-  ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+  ctx.font = 'bold 19px "Plus Jakarta Sans", sans-serif';
   ctx.fillText(subject.toUpperCase(), subjekValueX + (infoBoxX + infoBoxW - subjekValueX) / 2, rowDividerY + (infoBoxH * 0.25));
 
   ctx.restore();
 
-  // 4. Dynamic Column Calculation to guarantee fit on single A4 sheet
+  // 4. SEKSYEN 2 BANNER: CLEAR BOUNDARY INDICATING JAWAPAN BERMULA DARI NOMBOR 1
+  // Full-width prominent high-contrast banner that eliminates any confusion for AI or humans
+  const bannerY = 246;
+  const bannerH = 50;
+  ctx.save();
+  ctx.fillStyle = '#0f172a'; // solid dark navy
+  ctx.beginPath();
+  ctx.roundRect(infoBoxX, bannerY, infoBoxW, bannerH, 8);
+  ctx.fill();
+
+  ctx.strokeStyle = '#38bdf8'; // subtle cyan border highlight
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Banner Header Text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(`SEKSYEN 2: RUANG JAWAPAN OBJEKTIF (BERMULA DARI NOMBOR 1 HINGGA ${totalQuestions})`, width / 2, bannerY + 18);
+
+  // Critical Warning / Instruction in Banner
+  ctx.fillStyle = '#fde047'; // bright yellow
+  ctx.font = 'bold 12.5px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('★ ARAHAN PENTING: Semakan jawapan bermula HANYA dari NOMBOR 1 di bawah. Hitamkan satu bulatan bagi setiap soalan.', width / 2, bannerY + 36);
+  ctx.restore();
+
+  // 5. Dynamic Column Calculation to guarantee fit on single A4 sheet
   // If <= 20 questions -> 2 columns (e.g. 1-10, 11-20, exactly as in sample image!)
   // If 21-40 questions -> 2 columns of 15-20 or 3 columns
   // If 41-60 questions -> 3 columns
@@ -235,13 +261,30 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
     const sideSpaceStartX = bubblesStartX + bubblesAreaWidth + 10;
     const sideSpaceWidth = (colX + columnWidth) - sideSpaceStartX;
 
+    // Column Header Coordinate
+    const headerY = gridStartY - 24;
+
+    // Column Mini-Banner: e.g. [ SOALAN 1 - 10 ]
+    ctx.save();
+    ctx.fillStyle = '#f1f5f9';
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(colX - 24, headerY - 50, columnWidth + 10, 20, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`LURUSAN SOALAN ${startQ} HINGGA ${endQ}`, colX - 19 + (columnWidth + 10) / 2, headerY - 40);
+    ctx.restore();
+
     // Column Header Letters: A B C D E with KOTAK HITAM PENJALURAN X (Column Optical Timing Marks)
     ctx.fillStyle = '#000000';
     ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    const headerY = gridStartY - 24;
 
     // Kotak Hitam Jalur X di atas nombor soalan
     ctx.fillRect(colX - 18, headerY - 24, 16, 10);

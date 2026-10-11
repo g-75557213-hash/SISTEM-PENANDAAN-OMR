@@ -994,40 +994,45 @@ app.post('/api/grade-omr', async (req, res) => {
 
     const promptText = `
 Anda adalah Enjin AI Penanda Kertas OMR Pintar (Automated OMR Optical Mark Recognition & Visual Marking Engine).
-Tugas anda adalah:
-1. MENGESAN NAMA PELAJAR SECARA TERUS (OCR NAMA):
-   - Imbas baris atau kotak bertulis "NAMA" / "NAME" di bahagian atas borang kertas jawapan (di dalam kotak maklumat pelajar).
-   - Baca dan transkrip nama pelajar yang tertulis atau dicetak di situ (contoh: "AHMAD DANIAL BIN RAZAK", "NURUL IZZAH", dll).
-   - Simpan nama penuh murid dalam "nama_pelajar". Jika ruangan nama benar-benar kosong, letakkan "Murid Tanpa Nama".
 
-2. PENGECAMAN LOREKAN BULATAN OMR (1 hingga ${totalQuestions}):
-   - AMARAN PENTING & KRITIKAL:
-     * Bahagian "NAMA", "KELAS", "SUBJEK" di atas BUKANLAH soalan 1! JANGAN SEKALI-KALI menganggap kotak nama sebagai permulaan jawapan!
-     * Soalan 1 BERMULA HANYA pada baris nombor "1" di bawah huruf lajur A, B, C, D, E.
-     * Gunakan KOTAK HITAM JALUR Y (Row Timing Marks) di sebelah setiap nombor soalan (1, 2, 3...) dan KOTAK HITAM JALUR X di atas pilihan A-E untuk mengunci kedudukan baris & lajur dengan tepat.
-   - Kenal pasti pilihan murid (A, B, C, D atau E).
-   - Jika kosong: jawapan_pelajar: "TIADA_JAWAPAN".
-   - Jika tanda tidak jelas / lebih dari 1: jawapan_pelajar: "AMBIGU/DOUBLE_MARK".
-   - Bandingkan dengan SKEMA JAWAPAN:
-     ${answerKeyFormatted || `1:A, 2:B, 3:C, 4:D, 5:E ... sehingga ${totalQuestions}`}
+STRUKTUR BORANG KERTAS JAWAPAN OMR:
+Borang ini terbahagi kepada DUA SEKSYEN yang berasingan:
+1. SEKSYEN 1 (BAHAGIAN ATAS): MAKLUMAT CALON (Kotak NAMA, KELAS, SUBJEK).
+   * AMARAN KERAS & MUTLAK: Bahagian ini BUKAN soalan dan BUKAN ruangan jawapan! JANGAN SEKALI-KALI membaca kotak NAMA atau teks nama sebagai jawapan soalan 1!
+   * Tugas anda untuk Seksyen 1: Hanya baca dan transkrip teks nama pelajar yang tertulis/tercetak pada ruangan 'NAMA' dan simpan ke dalam "nama_pelajar". Jika tiada nama, letakkan "Murid Tanpa Nama".
 
-3. STATUS & ANNOTATION (WARNA HIJAU UNTUK BETUL, MERAH UNTUK SALAH, KUNING UNTUK TIDAK JELAS/KOSONG):
-   - BETUL: simbol "✔", warna "GREEN", teks_tambahan: ""
-   - SALAH: simbol "✘", warna "RED", teks_tambahan: "Jawapan Betul: " + [jawapan_sebenar]
-   - KOSONG: simbol "○", warna "YELLOW", teks_tambahan: "Kosong (Betul: " + [jawapan_sebenar] + ")"
-   - DOUBLE_MARK / TIDAK_JELAS: simbol "⚠", warna "YELLOW", teks_tambahan: "Tidak Jelas (Betul: " + [jawapan_sebenar] + ")"
+2. SEKSYEN 2 (BAHAGIAN TENGAH HINGGA BAWAH): RUANG JAWAPAN OBJEKTIF (BERMULA DARI NOMBOR 1 HINGGA ${totalQuestions}).
+   * PERATURAN PALING UTAMA & WAJIB:
+     - SEMAKAN JAWAPAN MESTILAH BERMULA DARI NOMBOR 1 (SOALAN 1).
+     - Soalan 1 bermula HANYA pada baris yang mempunyai angka "1" di sebelah pilihan bulatan A, B, C, D, E di bawah tajuk Seksyen 2.
+     - Elemen pertama dalam senarai "analisis_detail" MESTILAH nombor_soalan: 1, merujuk kepada baris soalan 1.
+     - Setiap baris berikutnya adalah Soalan 2, Soalan 3 berturutan sehingga soalan ${totalQuestions}.
+     - Gunakan Kotak Hitam Penjaluran (Row Timing Marks) di sebelah setiap nombor soalan dan huruf lajur A, B, C, D, E untuk mengunci kedudukan baris jawapan.
 
-4. KIRAAN KEPUTUSAN:
-   - jawapan_betul: bilangan BETUL
-   - jawapan_salah: bilangan SALAH + KOSONG + DOUBLE_MARK
-   - jumlah_markah: "[jawapan_betul]/${totalQuestions}"
-   - peratusan: "[(jawapan_betul / ${totalQuestions}) * 100 dengan 1 titik perpuluhan]%"
-   - status_kelulusan: "LULUS" jika peratusan >= ${passingPercentage}%, jika tidak "GAGAL"
+PANDUAN PENGECAMAN LOREKAN BULATAN OMR:
+- Kenal pasti pilihan murid (A, B, C, D atau E).
+- Jika kosong / tiada tanda: jawapan_pelajar: "TIADA_JAWAPAN".
+- Jika tanda tidak jelas / dua lorekan: jawapan_pelajar: "AMBIGU/DOUBLE_MARK".
+- Bandingkan dengan SKEMA JAWAPAN:
+  ${answerKeyFormatted || `1:A, 2:B, 3:C, 4:D, 5:E ... sehingga ${totalQuestions}`}
 
-FORMAT RESPON (JSON SAHAJA):
+STATUS & ANNOTATION:
+- BETUL: simbol "✔", warna "GREEN", teks_tambahan: ""
+- SALAH: simbol "✘", warna "RED", teks_tambahan: "Jawapan Betul: " + [jawapan_sebenar]
+- KOSONG: simbol "○", warna "YELLOW", teks_tambahan: "Kosong (Betul: " + [jawapan_sebenar] + ")"
+- DOUBLE_MARK / TIDAK_JELAS: simbol "⚠", warna "YELLOW", teks_tambahan: "Tidak Jelas (Betul: " + [jawapan_sebenar] + ")"
+
+KIRAAN KEPUTUSAN:
+- jawapan_betul: bilangan BETUL
+- jawapan_salah: bilangan SALAH + KOSONG + DOUBLE_MARK
+- jumlah_markah: "[jawapan_betul]/${totalQuestions}"
+- peratusan: "[(jawapan_betul / ${totalQuestions}) * 100 dengan 1 titik perpuluhan]%"
+- status_kelulusan: "LULUS" jika peratusan >= ${passingPercentage}%, jika tidak "GAGAL"
+
+FORMAT RESPON (JSON SAHAJA - WAJIB PATUH):
 {
   "ringkasan_keputusan": {
-    "nama_pelajar": "<Nama sebenar yang dikesan dari kertas>",
+    "nama_pelajar": "<Nama sebenar yang dikesan dari kotak NAMA pada Seksyen 1>",
     "jumlah_soalan": ${totalQuestions},
     "jawapan_betul": 0,
     "jawapan_salah": 0,
@@ -1046,9 +1051,9 @@ FORMAT RESPON (JSON SAHAJA):
         "teks_tambahan": ""
       },
       "box": {
-        "ymin": 200,
+        "ymin": 196,
         "xmin": 100,
-        "ymax": 230,
+        "ymax": 224,
         "xmax": 450
       }
     }
@@ -1121,6 +1126,26 @@ FORMAT RESPON (JSON SAHAJA):
       }
 
       if (successfulResult) {
+        // Enforce that question numbers start strictly from 1 and never contain NAMA
+        if (Array.isArray(successfulResult.analisis_detail)) {
+          successfulResult.analisis_detail = successfulResult.analisis_detail
+            .filter((item: any) => item && typeof item.nombor_soalan === 'number' && item.nombor_soalan >= 1 && item.nombor_soalan <= totalQuestions)
+            .sort((a: any, b: any) => a.nombor_soalan - b.nombor_soalan);
+
+          const numCols = totalQuestions <= 20 ? 2 : totalQuestions <= 40 ? 3 : 3;
+          const qPerCol = Math.ceil(totalQuestions / numCols);
+
+          successfulResult.analisis_detail.forEach((item: any, idx: number) => {
+            item.nombor_soalan = idx + 1;
+            // Clamp bounding box so it is NEVER drawn over Section 1 (NAMA box < 185)
+            if (item.box && item.box.ymin < 185) {
+              const rowInCol = idx % qPerCol;
+              const rH = 580 / qPerCol;
+              item.box.ymin = Math.round(196 + rowInCol * rH);
+              item.box.ymax = Math.round(item.box.ymin + rH * 0.85);
+            }
+          });
+        }
         return res.json({ success: true, data: successfulResult });
       }
 
@@ -1221,8 +1246,8 @@ function generateIntelligentOMRFallback(
     const colWidthPct = 900 / numColumns;
     const xmin = Math.round(70 + col * colWidthPct);
     const xmax = Math.round(xmin + colWidthPct * 0.92);
-    const rowHeight = 620 / questionsPerCol;
-    const ymin = Math.round(210 + rowInCol * rowHeight);
+    const rowHeight = 580 / questionsPerCol;
+    const ymin = Math.round(196 + rowInCol * rowHeight);
     const ymax = Math.round(ymin + rowHeight * 0.85);
 
     detailList.push({
