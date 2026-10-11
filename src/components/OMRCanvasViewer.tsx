@@ -21,7 +21,7 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
   // Layer toggle states
   const [showCheckmarks, setShowCheckmarks] = useState(true);
   const [showCorrections, setShowCorrections] = useState(true);
-  const [showBoxes, setShowBoxes] = useState(false);
+  const [showBoxes, setShowBoxes] = useState(true);
   const [showHeaderStamp, setShowHeaderStamp] = useState(true);
   const [showOfficialSeal, setShowOfficialSeal] = useState(true);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -143,19 +143,33 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           markTargetX = optionsStartX + optToIndex[studentOpt] * optionsGap + optionsGap * 0.5;
         }
 
-        // Draw Bounding Boxes if enabled
+        // Draw Bounding Boxes & Question Alignment Boxes (SEMUA KOTAK PENJAJARAN NAIK HIJAU)
         if (showBoxes) {
-          ctx.strokeStyle = item.status === 'BETUL' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+          ctx.strokeStyle = item.status === 'BETUL' ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.4)';
           ctx.lineWidth = 1;
           ctx.strokeRect(boxXmin, boxYmin, boxXmax - boxXmin, boxH);
 
-          // Highlight detected row timing mark
-          if (item.box?.rowTimingMark?.found) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(16, 185, 129, 0.5)';
-            ctx.fillRect(item.box.rowTimingMark.x - 7, item.box.rowTimingMark.y - 5, 14, 10);
-            ctx.restore();
-          }
+          // KOTAK PENJAJARAN KECIL (ROW TIMING MARK) - SEMUA NAIK HIJAU
+          const markX = item.box?.rowTimingMark?.x ?? Math.round(boxXmin - 16);
+          const markY = item.box?.rowTimingMark?.y ?? Math.round(actualCenterY);
+
+          ctx.save();
+          // Kotak align kecil warna hijau terang
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.9)'; // Emerald Green
+          ctx.strokeStyle = '#059669';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(markX - 8, markY - 5.5, 16, 11, 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Simbol ✓ halus di dalam kotak hijau
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 8px "Plus Jakarta Sans", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✓', markX, markY);
+          ctx.restore();
         }
 
         // 2. Color-coded Bubble Ring around student's answer (Hijau = Betul, Merah = Salah, Kuning = Tidak Jelas)
@@ -453,12 +467,15 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
           </button>
           <button
             onClick={() => setShowBoxes(!showBoxes)}
-            className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 shrink-0 text-[11px] ${
-              showBoxes ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 shrink-0 text-[11px] ${
+              showBoxes
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-sm'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
-            title="Togol Grid Kotak Soalan"
+            title="Togol Paparan Kotak Penjajaran Hijau bagi Setiap Nombor Soalan"
           >
-            Kotak Grid
+            <span className={`w-2 h-2 rounded-full ${showBoxes ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            Kotak Penjajaran (Hijau)
           </button>
           <button
             onClick={() => setShowOfficialSeal(!showOfficialSeal)}

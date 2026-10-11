@@ -1196,12 +1196,13 @@ export default function App() {
         }}
       />
 
-      {/* Live Camera Scanner Modal with 4 Corner Alignment Target Guides */}
+      {/* Live Camera Scanner Modal with Fiducial & Question Alignment Guides */}
       <OMRScannerModal
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onCapture={handleCameraCapture}
         targetClassName={activeFolder ? activeFolder.className : 'Kelas'}
+        totalQuestions={totalQuestions}
       />
     </div>
   );

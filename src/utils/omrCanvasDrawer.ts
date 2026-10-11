@@ -180,10 +180,10 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
 
   ctx.restore();
 
-  // 4. SEKSYEN 2 BANNER: CLEAR BOUNDARY INDICATING JAWAPAN BERMULA DARI NOMBOR 1
-  // Full-width prominent high-contrast banner that eliminates any confusion for AI or humans
-  const bannerY = 246;
-  const bannerH = 50;
+  // 4. BAHAGIAN A BANNER: CLEAR BOUNDARY INDICATING JAWAPAN BERMULA DARI NOMBOR 1
+  // Full-width prominent high-contrast banner adhering to Malaysian SPM/PT3 exam standards
+  const bannerY = 244;
+  const bannerH = 56;
   ctx.save();
   ctx.fillStyle = '#0f172a'; // solid dark navy
   ctx.beginPath();
@@ -194,17 +194,17 @@ export function drawOMRSheetToCanvas(canvas: HTMLCanvasElement, drawOptions: Dra
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Banner Header Text
+  // Banner Header Text: BAHAGIAN A
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 16px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText(`SEKSYEN 2: RUANG JAWAPAN OBJEKTIF (BERMULA DARI NOMBOR 1 HINGGA ${totalQuestions})`, width / 2, bannerY + 18);
+  ctx.fillText(`BAHAGIAN A: RUANG JAWAPAN OBJEKTIF (BERMULA DARI NOMBOR 1 HINGGA ${totalQuestions})`, width / 2, bannerY + 18);
 
-  // Critical Warning / Instruction in Banner
-  ctx.fillStyle = '#fde047'; // bright yellow
-  ctx.font = 'bold 12.5px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText('★ ARAHAN PENTING: Semakan jawapan bermula HANYA dari NOMBOR 1 di bawah. Hitamkan satu bulatan bagi setiap soalan.', width / 2, bannerY + 36);
+  // Exact Requested Instruction: "Sila hitamkan jawapan anda di Bahagian A dalam ruang jawapan yang disediakan"
+  ctx.fillStyle = '#fde047'; // bright high-contrast yellow
+  ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('★ ARAHAN: Sila hitamkan jawapan anda di Bahagian A dalam ruang jawapan yang disediakan.', width / 2, bannerY + 38);
   ctx.restore();
 
   // 5. Dynamic Column Calculation to guarantee fit on single A4 sheet

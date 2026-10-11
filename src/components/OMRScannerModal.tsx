@@ -19,6 +19,7 @@ interface OMRScannerModalProps {
   onClose: () => void;
   onCapture: (imageDataUrl: string, autoGrade?: boolean) => void;
   targetClassName?: string;
+  totalQuestions?: number;
 }
 
 interface MarkersDetectionState {
@@ -36,6 +37,7 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
   onClose,
   onCapture,
   targetClassName = '5 Cemerlang',
+  totalQuestions = 20,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -420,8 +422,8 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                   />
                   <span className="text-[10px] sm:text-xs font-bold tracking-wide">
                     {isAllSixAligned
-                      ? '6/6 TITIK TEPAT SEJAJAR! MENYEMAK AUTOMATIK...'
-                      : `${markersState.count}/6 Titik Dikesan — Sejajarkan Kotak Hitam Kertas`}
+                      ? '✔ SEMUA KOTAK PENJAJARAN SEJAJAR (HIJAU)! MENYEMAK AUTOMATIK...'
+                      : `${markersState.count}/6 Titik Dikesan — Halakan Kamera ke Kertas OMR`}
                   </span>
                 </div>
               </div>
@@ -456,25 +458,114 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                   {/* Visual Guide: Student Name Zone (Ruang Nama) */}
                   <div
                     className="absolute border border-dashed border-cyan-400/40 rounded-lg bg-cyan-950/20 flex items-center justify-center pointer-events-none px-2"
-                    style={{ top: '8.2%', left: '16%', right: '16%', height: '8.5%' }}
+                    style={{ top: '7.8%', left: '16%', right: '16%', height: '6.5%' }}
                   >
                     <span className="text-[8px] sm:text-[9px] font-mono text-cyan-300 font-bold bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-500/30">
-                      RUANG NAMA MURID (BUKAN SOALAN)
+                      SEKSYEN 1: RUANG NAMA MURID (BUKAN SOALAN)
                     </span>
                   </div>
 
-                  {/* Visual Guide: Start of Answers / Question 1 (Kotak Hitam Nombor Jawapan) */}
+                  {/* Visual Guide: Bahagian A Header & Arahan */}
                   <div
-                    className="absolute border-t-2 border-dashed border-emerald-400/70 flex items-center justify-between pointer-events-none px-3"
-                    style={{ top: '19.0%', left: '8%', right: '8%' }}
+                    className="absolute border border-indigo-400/40 rounded bg-slate-950/90 flex flex-col items-center justify-center pointer-events-none px-2 py-0.5"
+                    style={{ top: '14.8%', left: '7%', right: '7%', height: '5.2%' }}
                   >
-                    <span className="text-[7px] sm:text-[8px] font-mono font-bold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-500/60 -mt-2.5 shadow">
-                      ■ KOTAK HITAM SOALAN 1 (PERMULAAN JAWAPAN)
+                    <span className="text-[8px] sm:text-[9px] font-mono font-bold text-white tracking-wide">
+                      BAHAGIAN A (SOALAN 1 HINGGA {totalQuestions})
                     </span>
-                    <span className="text-[7px] sm:text-[8px] font-mono font-bold text-purple-300 bg-slate-950/80 px-1.5 py-0.5 rounded -mt-2.5">
-                      LAJUR A B C D E
+                    <span className="text-[6.5px] sm:text-[7.5px] font-mono text-amber-300 font-medium truncate max-w-full">
+                      ★ ARAHAN: Sila hitamkan jawapan anda di Bahagian A dalam ruang jawapan yang disediakan
                     </span>
                   </div>
+
+                  {/* Outer Left Margin Timing Marks */}
+                  {Array.from({ length: Math.ceil(totalQuestions / (totalQuestions <= 20 ? 2 : 3)) }).map((_, r) => {
+                    const qPerCol = Math.ceil(totalQuestions / (totalQuestions <= 20 ? 2 : 3));
+                    const topPct = 21.2 + (r / qPerCol) * 66;
+                    return (
+                      <div
+                        key={`outer-left-${r}`}
+                        className={`absolute w-2 h-1.5 sm:w-2.5 sm:h-2 rounded-[1px] transition-all duration-300 ${
+                          isAllSixAligned
+                            ? 'bg-emerald-400 border border-emerald-300 shadow-[0_0_6px_rgba(16,185,129,0.9)] animate-pulse'
+                            : 'bg-yellow-400/30 border border-yellow-400/50'
+                        }`}
+                        style={{ left: '1.2%', top: `${topPct}%` }}
+                      />
+                    );
+                  })}
+
+                  {/* Outer Right Margin Timing Marks */}
+                  {Array.from({ length: Math.ceil(totalQuestions / (totalQuestions <= 20 ? 2 : 3)) }).map((_, r) => {
+                    const qPerCol = Math.ceil(totalQuestions / (totalQuestions <= 20 ? 2 : 3));
+                    const topPct = 21.2 + (r / qPerCol) * 66;
+                    return (
+                      <div
+                        key={`outer-right-${r}`}
+                        className={`absolute w-2 h-1.5 sm:w-2.5 sm:h-2 rounded-[1px] transition-all duration-300 ${
+                          isAllSixAligned
+                            ? 'bg-emerald-400 border border-emerald-300 shadow-[0_0_6px_rgba(16,185,129,0.9)] animate-pulse'
+                            : 'bg-yellow-400/30 border border-yellow-400/50'
+                        }`}
+                        style={{ right: '1.2%', top: `${topPct}%` }}
+                      />
+                    );
+                  })}
+
+                  {/* Dynamic Question Alignment Boxes Track for Every Question Number */}
+                  {/* JIKA SUDAH ALIGN, SEMUA KOTAK AKAN NAIK HIJAU! */}
+                  {(() => {
+                    const numCols = totalQuestions <= 20 ? 2 : totalQuestions <= 40 ? 3 : 3;
+                    const qPerCol = Math.ceil(totalQuestions / numCols);
+                    return Array.from({ length: numCols }).map((_, col) => {
+                      const colLeft = numCols === 2 ? (col === 0 ? '9%' : '53%') : (col === 0 ? '8%' : col === 1 ? '38%' : '68%');
+                      const colW = numCols === 2 ? '40%' : '27%';
+                      return (
+                        <div
+                          key={`col-track-${col}`}
+                          className="absolute flex flex-col justify-between pointer-events-none"
+                          style={{ left: colLeft, width: colW, top: '21.2%', height: '66%' }}
+                        >
+                          {Array.from({ length: qPerCol }).map((_, r) => {
+                            const qNum = col * qPerCol + r + 1;
+                            if (qNum > totalQuestions) return null;
+                            return (
+                              <div key={`q-align-${qNum}`} className="flex items-center gap-1 sm:gap-1.5">
+                                {/* Kotak Align Kecil bagi Setiap Nombor Jawapan - NAIK HIJAU JIKA SUDAH ALIGN */}
+                                <div
+                                  className={`w-3 h-2 sm:w-3.5 sm:h-2.5 rounded-[1px] flex items-center justify-center transition-all duration-300 font-mono text-[6.5px] sm:text-[7.5px] font-bold ${
+                                    isAllSixAligned
+                                      ? 'bg-emerald-500 border border-emerald-300 text-white shadow-[0_0_8px_rgba(16,185,129,0.9)] scale-110 ring-1 ring-emerald-300'
+                                      : 'bg-yellow-400/30 border border-yellow-400/70 text-yellow-300'
+                                  }`}
+                                  title={`Kotak Penjajaran Soalan ${qNum}`}
+                                >
+                                  {isAllSixAligned ? '✓' : ''}
+                                </div>
+
+                                {/* Nombor Soalan */}
+                                <span
+                                  className={`text-[8px] sm:text-[9px] font-mono font-bold w-4 text-right transition-colors ${
+                                    isAllSixAligned ? 'text-emerald-300' : 'text-slate-400'
+                                  }`}
+                                >
+                                  {qNum}
+                                </span>
+
+                                {/* Mini Bubble Placeholders */}
+                                <div className="flex items-center gap-0.5 sm:gap-1 opacity-60">
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    });
+                  })()}
 
                   {/* 1. TOP-LEFT MARKER (Exact coordinate: 8.27% from top, 3.23% from left) */}
                   <div
