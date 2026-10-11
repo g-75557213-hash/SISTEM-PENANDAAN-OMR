@@ -296,58 +296,62 @@ export const OMRCanvasViewer: React.FC<OMRCanvasViewerProps> = ({
         }
       });
 
-      // 3. Draw Official Score Stamp & Student Answer Data (50% Skala dari asal di ruangan kosong bawah bahagian tanda jawapan pelajar)
+      // 3. Draw Official Score Stamp (KOTAK HIJAU: JUMLAH JAWAPAN BETUL PER JAWAPAN SALAH DI BAHAGIAN BAWAH)
       if (showHeaderStamp) {
         ctx.save();
         const headerInfo = gradingResult.cetakan_header_markah;
         const summary = gradingResult.ringkasan_keputusan;
 
         const isLulus = headerInfo.status_kelulusan === 'LULUS' || headerInfo.status_kelulusan === 'CEMERLANG';
-        const strokeColor = isLulus ? '#059669' : '#dc2626';
-        const bgColor = isLulus ? 'rgba(236, 253, 245, 0.98)' : 'rgba(254, 242, 242, 0.98)';
+        const strokeColor = '#059669'; // Emerald Green
+        const bgColor = '#ecfdf5'; // Emerald-50 background
 
-        // 50% skala dari saiz asal: tinggi dikurangkan ke ~50% (28-34px)
-        const stampW = Math.min(600, Math.round(w * 0.62));
-        const stampH = Math.max(34, Math.round(h * 0.026));
+        const stampW = Math.min(620, Math.round(w * 0.65));
+        const stampH = Math.max(38, Math.round(h * 0.032));
         const stampX = (w - stampW) / 2;
         // Terletak di bahagian kosong di bawah ruang tanda jawapan pelajar
         const stampY = Math.round(h - stampH - h * 0.016);
 
-        // Stamp card background (Skala 50%)
+        // Stamp card background (Kotak Hijau Rasmi)
         ctx.fillStyle = bgColor;
         ctx.beginPath();
-        ctx.roundRect(stampX, stampY, stampW, stampH, 4);
+        ctx.roundRect(stampX, stampY, stampW, stampH, 6);
         ctx.fill();
 
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Line 1 (Skala 50%): Anotasi Markah & Status & Bilangan Betul
+        // Inner glowing border
+        ctx.strokeStyle = '#34d399';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(stampX + 2, stampY + 2, stampW - 4, stampH - 4);
+
+        // Line 1: JUMLAH JAWAPAN BETUL PER JAWAPAN SALAH (KOTAK HIJAU)
         ctx.textAlign = 'center';
-        ctx.fillStyle = strokeColor;
-        const fontSizeHeader = Math.max(7, Math.round(stampH * 0.28));
+        ctx.fillStyle = '#065f46'; // Emerald 900
+        const fontSizeHeader = Math.max(8.5, Math.round(stampH * 0.28));
         ctx.font = `bold ${fontSizeHeader}px "Plus Jakarta Sans", sans-serif`;
+        const countRatioStr = `${summary.jawapan_betul} BETUL / ${summary.jawapan_salah} SALAH`;
         const scoreStr = headerInfo.teks_cetakan || `MARKAH: ${summary.jumlah_markah} (${summary.peratusan})`;
-        const countStr = `[✔ ${summary.jawapan_betul} BETUL  •  ✘ ${summary.jawapan_salah} SALAH]`;
         ctx.fillText(
-          `★ SEMAKAN OMR RASMI ★  |  ${scoreStr}  |  STATUS: ${headerInfo.status_kelulusan}  |  ${countStr}`,
+          `★ KEPUTUSAN: ${countRatioStr}  |  ${scoreStr}  |  STATUS: ${headerInfo.status_kelulusan} ★`,
           stampX + stampW / 2,
           stampY + stampH * 0.38
         );
 
         // Divider
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = '#a7f3d0';
+        ctx.lineWidth = 0.8;
         ctx.beginPath();
         ctx.moveTo(stampX + 8, stampY + stampH * 0.52);
         ctx.lineTo(stampX + stampW - 8, stampY + stampH * 0.52);
         ctx.stroke();
 
-        // Line 2 (Skala 50%): Data Jawapan Pelajar
-        const fontSizeData = Math.max(6, Math.round(stampH * 0.24));
+        // Line 2: Ringkasan Kod Warna Jawapan Pelajar (Hijau=Betul, Merah=Salah, Kuning=Ralat/Kosong)
+        const fontSizeData = Math.max(7, Math.round(stampH * 0.24));
         ctx.font = `bold ${fontSizeData}px "JetBrains Mono", monospace`;
-        ctx.fillStyle = isLulus ? '#065f46' : '#991b1b';
+        ctx.fillStyle = '#047857';
 
         const answerDataItems = gradingResult.analisis_detail.map((item) => {
           const ans = item.jawapan_pelajar === 'TIADA_JAWAPAN' ? '-' : item.jawapan_pelajar;

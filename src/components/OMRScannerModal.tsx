@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { optimizeImageForOMR } from '../utils/imageOptimizer';
 import { findSixFiducialMarkers } from '../utils/omrFiducialDetector';
+import { getBrailleForNumber, getBrailleForOption } from '../utils/brailleUtils';
 
 interface OMRScannerModalProps {
   isOpen: boolean;
@@ -455,26 +456,36 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Visual Guide: Student Name Zone (Ruang Nama) */}
+                  {/* Visual Guide: Arahan Peperiksaan (Atas Sekali) */}
                   <div
-                    className="absolute border border-dashed border-cyan-400/40 rounded-lg bg-cyan-950/20 flex items-center justify-center pointer-events-none px-2"
-                    style={{ top: '7.8%', left: '16%', right: '16%', height: '6.5%' }}
+                    className="absolute border border-emerald-400/40 rounded bg-slate-950/90 flex flex-col items-center justify-center pointer-events-none px-2 py-0.5"
+                    style={{ top: '2.4%', left: '7%', right: '7%', height: '3.6%' }}
                   >
-                    <span className="text-[8px] sm:text-[9px] font-mono text-cyan-300 font-bold bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-500/30">
-                      SEKSYEN 1: RUANG NAMA MURID (BUKAN SOALAN)
+                    <span className="text-[6.5px] sm:text-[7.5px] font-mono text-emerald-300 font-bold truncate max-w-full">
+                      ★ ARAHAN: Sila hitamkan jawapan anda di Bahagian A dalam ruang jawapan yang disediakan
                     </span>
                   </div>
 
-                  {/* Visual Guide: Bahagian A Header & Arahan */}
+                  {/* Visual Guide: Ruang Masukkan Nama & Kelas Calon */}
                   <div
-                    className="absolute border border-indigo-400/40 rounded bg-slate-950/90 flex flex-col items-center justify-center pointer-events-none px-2 py-0.5"
-                    style={{ top: '14.8%', left: '7%', right: '7%', height: '5.2%' }}
+                    className="absolute border border-dashed border-cyan-400/40 rounded bg-slate-950/80 flex items-center justify-between pointer-events-none px-3"
+                    style={{ top: '6.5%', left: '7%', right: '7%', height: '4.8%' }}
                   >
-                    <span className="text-[8px] sm:text-[9px] font-mono font-bold text-white tracking-wide">
-                      BAHAGIAN A (SOALAN 1 HINGGA {totalQuestions})
+                    <span className="text-[7px] sm:text-[8px] font-mono font-bold text-cyan-200">
+                      RUANG NAMA CALON
                     </span>
-                    <span className="text-[6.5px] sm:text-[7.5px] font-mono text-amber-300 font-medium truncate max-w-full">
-                      ★ ARAHAN: Sila hitamkan jawapan anda di Bahagian A dalam ruang jawapan yang disediakan
+                    <span className="text-[7px] sm:text-[8px] font-mono text-cyan-300">
+                      KELAS / TINGKATAN
+                    </span>
+                  </div>
+
+                  {/* Visual Guide: Panduan Mengisi Jawapan */}
+                  <div
+                    className="absolute border border-slate-700/60 rounded bg-slate-900/80 flex items-center justify-center pointer-events-none px-2"
+                    style={{ top: '11.8%', left: '7%', right: '7%', height: '4.0%' }}
+                  >
+                    <span className="text-[7px] sm:text-[8px] font-mono text-slate-300 font-medium">
+                      PANDUAN: HITAMKAN BULATAN PENUH [●] (TIADA HURUF DI DALAM BULATAN) • PENSEL 2B
                     </span>
                   </div>
 
@@ -526,9 +537,29 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                           className="absolute flex flex-col justify-between pointer-events-none"
                           style={{ left: colLeft, width: colW, top: '21.2%', height: '66%' }}
                         >
+                          {/* Column Header Braille + Options Guide ABCD */}
+                          <div className="flex items-center gap-1 sm:gap-1.5 pb-0.5 border-b border-slate-700/60 mb-0.5">
+                            <span className="w-3 sm:w-3.5 text-center text-[7px] text-slate-500 font-mono">#</span>
+                            <span className="w-4 text-center text-[7px] text-slate-500 font-mono">NO</span>
+                            <div className="flex items-center gap-0.5 sm:gap-1 pl-1">
+                              {(['A', 'B', 'C', 'D'] as const).map((opt) => (
+                                <span
+                                  key={`hdr-col-${col}-${opt}`}
+                                  className={`w-2.5 sm:w-3 text-center text-[7px] sm:text-[8px] font-bold font-mono ${
+                                    isAllSixAligned ? 'text-emerald-300' : 'text-slate-400'
+                                  }`}
+                                  title={`Lajur ${opt} (Braille: ${getBrailleForOption(opt)})`}
+                                >
+                                  {opt}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
                           {Array.from({ length: qPerCol }).map((_, r) => {
                             const qNum = col * qPerCol + r + 1;
                             if (qNum > totalQuestions) return null;
+                            const brailleCode = getBrailleForNumber(qNum);
                             return (
                               <div key={`q-align-${qNum}`} className="flex items-center gap-1 sm:gap-1.5">
                                 {/* Kotak Align Kecil bagi Setiap Nombor Jawapan - NAIK HIJAU JIKA SUDAH ALIGN */}
@@ -538,26 +569,34 @@ export const OMRScannerModal: React.FC<OMRScannerModalProps> = ({
                                       ? 'bg-emerald-500 border border-emerald-300 text-white shadow-[0_0_8px_rgba(16,185,129,0.9)] scale-110 ring-1 ring-emerald-300'
                                       : 'bg-yellow-400/30 border border-yellow-400/70 text-yellow-300'
                                   }`}
-                                  title={`Kotak Penjajaran Soalan ${qNum}`}
+                                  title={`Kotak Penjajaran Soalan ${qNum} (Braille: ${brailleCode})`}
                                 >
                                   {isAllSixAligned ? '✓' : ''}
                                 </div>
 
-                                {/* Nombor Soalan */}
-                                <span
-                                  className={`text-[8px] sm:text-[9px] font-mono font-bold w-4 text-right transition-colors ${
-                                    isAllSixAligned ? 'text-emerald-300' : 'text-slate-400'
-                                  }`}
-                                >
-                                  {qNum}
-                                </span>
+                                {/* Nombor Soalan + Braille */}
+                                <div className="flex items-center gap-0.5 w-7 sm:w-8 justify-end">
+                                  <span
+                                    className={`text-[8px] sm:text-[9px] font-mono font-bold transition-colors ${
+                                      isAllSixAligned ? 'text-emerald-300' : 'text-slate-300'
+                                    }`}
+                                  >
+                                    {qNum}
+                                  </span>
+                                  <span
+                                    className="text-[8px] sm:text-[9px] text-slate-400 select-none"
+                                    title={`Kod Braille Soalan ${qNum}: ${brailleCode}`}
+                                  >
+                                    {brailleCode}
+                                  </span>
+                                </div>
 
                                 {/* Mini Bubble Placeholders */}
-                                <div className="flex items-center gap-0.5 sm:gap-1 opacity-60">
-                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
-                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
-                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
-                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border ${isAllSixAligned ? 'border-emerald-400/60' : 'border-slate-500'}`} />
+                                <div className="flex items-center gap-0.5 sm:gap-1 opacity-70 pl-0.5">
+                                  <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border flex items-center justify-center text-[5.5px] ${isAllSixAligned ? 'border-emerald-400/70 text-emerald-300' : 'border-slate-500 text-slate-500'}`}>A</span>
+                                  <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border flex items-center justify-center text-[5.5px] ${isAllSixAligned ? 'border-emerald-400/70 text-emerald-300' : 'border-slate-500 text-slate-500'}`}>B</span>
+                                  <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border flex items-center justify-center text-[5.5px] ${isAllSixAligned ? 'border-emerald-400/70 text-emerald-300' : 'border-slate-500 text-slate-500'}`}>C</span>
+                                  <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border flex items-center justify-center text-[5.5px] ${isAllSixAligned ? 'border-emerald-400/70 text-emerald-300' : 'border-slate-500 text-slate-500'}`}>D</span>
                                 </div>
                               </div>
                             );
